@@ -1,0 +1,47 @@
+# Errors the MyID adapter returns (myid-adapter-api): HTTP status, title and message in English,
+# Russian and Uzbek. MyID's HTTP status and detail travel in subErrors.
+platform:
+  error:
+    codes:
+      MYID_ADAPTER_CODE_NOT_VALID:
+        http-code: 400
+        title: myid-code-not-valid
+        is-loggable: false
+        message-en: "The MyID code is unknown, used or expired."
+        message-ru: "Код MyID неизвестен, уже использован или истёк."
+        message-uz: "MyID kodi nomaʼlum, ishlatilgan yoki muddati oʻtgan."
+      MYID_ADAPTER_NOT_FOUND:
+        http-code: 404
+        title: myid-not-found
+        is-loggable: false
+        message-en: "MyID has no such session or job."
+        message-ru: "В MyID нет такой сессии или задачи."
+        message-uz: "MyID'da bunday sessiya yoki vazifa yoʻq."
+      MYID_ADAPTER_USER_BLOCKED:
+        http-code: 429
+        title: myid-user-blocked
+        is-loggable: false
+        message-en: "MyID blocked the person for now after failed attempts."
+        message-ru: "MyID временно заблокировал человека после неудачных попыток."
+        message-uz: "MyID muvaffaqiyatsiz urinishlardan keyin shaxsni vaqtincha blokladi."
+      MYID_ADAPTER_MYID_CLIENT_ERROR:
+        http-code: 502
+        title: myid-client-error
+        is-loggable: true
+        message-en: "MyID refused the adapter's request."
+        message-ru: "MyID отклонил запрос адаптера."
+        message-uz: "MyID adapter soʻrovini rad etdi."
+      MYID_ADAPTER_UNAUTHORIZED:
+        http-code: 502
+        title: myid-unauthorized
+        is-loggable: true
+        message-en: "MyID did not accept the tenant's credential."
+        message-ru: "MyID не принял учётные данные тенанта."
+        message-uz: "MyID tenant hisob maʼlumotlarini qabul qilmadi."
+      MYID_ADAPTER_SERVICE_UNAVAILABLE:
+        http-code: 503
+        title: myid-service-unavailable
+        is-loggable: true
+        message-en: "MyID is not available now. The outcome is unknown."
+        message-ru: "MyID сейчас недоступен. Результат неизвестен."
+        message-uz: "MyID hozir ishlamayapti. Natija nomaʼlum."

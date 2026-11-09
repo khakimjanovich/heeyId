@@ -1,0 +1,64 @@
+# Callers reach the adapter only over mutual TLS: its certificate, and theirs from a trusted CA.
+server:
+  port: ${MYID_ADAPTER_PORT}
+  ssl:
+    bundle: myid-adapter
+    client-auth: need
+
+spring:
+  application:
+    name: myid-adapter
+  config:
+    import:
+      - classpath:properties/security.yaml
+      - classpath:properties/myid-adapter-exception.yaml
+      # Each tenant's MyID credential (myid.tenants), a file the deployment renders from Vault.
+      - file:${MYID_ADAPTER_TENANTS_FILE}
+  ssl:
+    bundle:
+      pem:
+        myid-adapter:
+          keystore:
+            certificate: ${MYID_ADAPTER_SSL_CERTIFICATE}
+            private-key: ${MYID_ADAPTER_SSL_PRIVATE_KEY}
+          # The CAs whose client certificates are accepted: heeyID's.
+          truststore:
+            certificate: ${MYID_ADAPTER_SSL_TRUSTED_CAS}
+        # SAD TB-5: the CA that MyID's certificates must come from; no other CA is trusted for MyID.
+        myid:
+          truststore:
+            certificate: ${MYID_TRUSTED_CAS}
+  # Valkey: each tenant's MyID tokens (keys t:<tenant>:myid-adapter:token:*, encrypted), shared by all
+  # instances.
+  data:
+    redis:
+      host: ${VALKEY_HOST}
+      port: ${VALKEY_PORT}
+      username: ${VALKEY_USERNAME}
+      password: ${VALKEY_PASSWORD}
+  # Spring's own error details in the caller's language (Accept-Language).
+  messages:
+    basename: messages/error
+    fallback-to-system-locale: false
+    always-use-message-format: true
+
+# MyID's hosts and how long we wait. MyID answers each call in 5 s, the Inplace and compare results
+# in 30 s (docs.myid.uz).
+myid:
+  base-url: ${MYID_BASE_URL}
+  media-url: ${MYID_MEDIA_URL}
+  connect-timeout: ${MYID_CONNECT_TIMEOUT}
+  read-timeout: ${MYID_READ_TIMEOUT}
+  # SAD TB-5: the AES-256 key (base64, 32 bytes) of the MyID tokens in Valkey.
+  token-key: ${MYID_ADAPTER_TOKEN_KEY}
+  # SAD §8: open after 5 failures in a row, probe each 30 s.
+  breaker:
+    failures: ${MYID_BREAKER_FAILURES}
+    probe-after: ${MYID_BREAKER_PROBE_AFTER}
+
+# Probes reach health on their own port, inside the segment, without a client certificate.
+management:
+  server:
+    port: ${MYID_ADAPTER_MANAGEMENT_PORT}
+    ssl:
+      enabled: false
