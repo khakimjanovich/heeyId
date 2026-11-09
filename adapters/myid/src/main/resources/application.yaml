@@ -24,7 +24,12 @@ spring:
           # The CAs whose client certificates are accepted: heeyID's.
           truststore:
             certificate: ${MYID_ADAPTER_SSL_TRUSTED_CAS}
-  # Valkey: each tenant's MyID tokens (keys <tenant>:myid-adapter:token:*), shared by all instances.
+        # SAD TB-5: the CA that MyID's certificates must come from; no other CA is trusted for MyID.
+        myid:
+          truststore:
+            certificate: ${MYID_TRUSTED_CAS}
+  # Valkey: each tenant's MyID tokens (keys t:<tenant>:myid-adapter:token:*, encrypted), shared by all
+  # instances.
   data:
     redis:
       host: ${VALKEY_HOST}
@@ -44,6 +49,8 @@ myid:
   media-url: ${MYID_MEDIA_URL}
   connect-timeout: ${MYID_CONNECT_TIMEOUT}
   read-timeout: ${MYID_READ_TIMEOUT}
+  # SAD TB-5: the AES-256 key (base64, 32 bytes) of the MyID tokens in Valkey.
+  token-key: ${MYID_ADAPTER_TOKEN_KEY}
   # SAD §8: open after 5 failures in a row, probe each 30 s.
   breaker:
     failures: ${MYID_BREAKER_FAILURES}

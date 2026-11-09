@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import java.time.Duration;
 import java.util.Map;
@@ -17,6 +18,7 @@ import org.springframework.validation.annotation.Validated;
  *
  * @param baseUrl MyID's host ({myid_host})
  * @param mediaUrl MyID's media host, for the Inplace photo ({myid_media_host})
+ * @param tokenKey the AES-256 key (base64) that encrypts the MyID tokens in Valkey (SAD TB-5)
  */
 @Validated
 @ConfigurationProperties(prefix = "myid")
@@ -26,6 +28,8 @@ public record MyidProperties(
     @NotNull Duration connectTimeout,
     @NotNull Duration readTimeout,
     @NotNull @Valid Breaker breaker,
+    @NotBlank @Pattern(regexp = "^[A-Za-z0-9+/]{43}=$", message = "must be 32 bytes in base64")
+        String tokenKey,
     @NotEmpty Map<String, @Valid Tenant> tenants) {
 
   /**

@@ -16,16 +16,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.time.LocalDate;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import javax.net.ssl.SSLHandshakeException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.health.registry.HealthContributorRegistry;
+import org.springframework.boot.health.registry.ReactiveHealthContributorRegistry;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -73,7 +82,17 @@ class MyidAdapterIT {
   static final String TENANT = "tenant-one";
   static final UUID SESSION = UUID.fromString("c328025e-e00c-4720-aad0-0c8cd9722bec");
   static final UUID JOB = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-  static final WireMockServer MYID = new WireMockServer(options().dynamicPort());
+
+  /** MyID's own CA: the adapter trusts MyID only through it (MYID_TRUSTED_CAS). */
+  static final ThrowawayCa MYID_CA = new ThrowawayCa(Callers.directory(), "myid");
+
+  static final WireMockServer MYID = new WireMockServer(tls(MYID_CA.server("myid")));
+
+  /** A MyID host whose certificate comes from another CA: the adapter must refuse it. */
+  static final WireMockServer FALSE_MYID =
+      new WireMockServer(tls(Callers.HEEYID_CA.server("false-myid")));
+
+  static final String TOKEN_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
   /** Valkey with an ACL user, as heeyid-infra runs it. */
   static final GenericContainer<?> VALKEY =
@@ -93,6 +112,7 @@ class MyidAdapterIT {
 
   static {
     MYID.start();
+    FALSE_MYID.start();
     VALKEY.start();
     // Spring imports the tenants file before dynamic properties exist: a system property it is.
     try {
@@ -120,8 +140,10 @@ class MyidAdapterIT {
   @DynamicPropertySource
   static void myid(DynamicPropertyRegistry registry) {
     Callers.register(registry);
-    registry.add("MYID_BASE_URL", MYID::baseUrl);
-    registry.add("MYID_MEDIA_URL", () -> MYID.baseUrl() + "/media");
+    registry.add("MYID_BASE_URL", MyidAdapterIT::myidUrl);
+    registry.add("MYID_MEDIA_URL", () -> myidUrl() + "/media");
+    registry.add("MYID_TRUSTED_CAS", () -> "file:" + MYID_CA.certificate());
+    registry.add("MYID_ADAPTER_TOKEN_KEY", () -> TOKEN_KEY);
     registry.add("MYID_CONNECT_TIMEOUT", () -> "1s");
     registry.add("MYID_READ_TIMEOUT", () -> "1s");
     registry.add("MYID_BREAKER_FAILURES", () -> "5");
@@ -134,6 +156,20 @@ class MyidAdapterIT {
     registry.add("OTLP_TRACES_ENDPOINT", () -> "http://otlp.not-started.invalid/v1/traces");
     registry.add("OTLP_METRICS_ENDPOINT", () -> "http://otlp.not-started.invalid/v1/metrics");
     registry.add("OTLP_LOGS_ENDPOINT", () -> "http://otlp.not-started.invalid/v1/logs");
+  }
+
+  static WireMockConfiguration tls(ThrowawayCa.Party server) {
+    return options()
+        .httpDisabled(true)
+        .dynamicHttpsPort()
+        .keystorePath(server.keyStore().toString())
+        .keystoreType("PKCS12")
+        .keystorePassword("throwaway")
+        .keyManagerPassword("throwaway");
+  }
+
+  static String myidUrl() {
+    return "https://localhost:" + MYID.httpsPort();
   }
 
   @LocalServerPort int port;
@@ -151,6 +187,9 @@ class MyidAdapterIT {
   MyidAdapterClient adapter;
 
   @Autowired StringRedisTemplate valkey;
+  @Autowired SslBundles sslBundles;
+  @Autowired HealthContributorRegistry health;
+  @Autowired ReactiveHealthContributorRegistry reactiveHealth;
 
   @BeforeEach
   void client() {
@@ -213,11 +252,13 @@ class MyidAdapterIT {
     assertThat(result.getProfile().getContacts().getPhone()).isEqualTo("998901234567");
     assertThat(result.getProfile().getAddress().getPermanentAddress()).isEqualTo("Tashkent");
     assertThat(result.getReuid().getExpiresAt()).isEqualTo(1722412345L);
-    // One token for both calls, kept in Valkey under the tenant's prefix until 5 min before expiry.
+    // One token for both calls, in Valkey under the tenant's prefix until 5 min before expiry,
+    // encrypted (SAD TB-5).
     MYID.verify(1, postRequestedFor(urlPathEqualTo("/api/v1/auth/clients/access-token")));
-    assertThat(valkey.opsForValue().get("tenant-one:myid-adapter:token:client"))
-        .isEqualTo("sdk-token");
-    assertThat(valkey.getExpire("tenant-one:myid-adapter:token:client")).isBetween(3200L, 3300L);
+    var stored = valkey.opsForValue().get("t:tenant-one:myid-adapter:token:client");
+    assertThat(stored).isNotNull().doesNotContain("sdk-token");
+    assertThat(new String(Base64.getDecoder().decode(stored))).doesNotContain("sdk-token");
+    assertThat(valkey.getExpire("t:tenant-one:myid-adapter:token:client")).isBetween(3200L, 3300L);
   }
 
   @Test
@@ -389,7 +430,7 @@ class MyidAdapterIT {
             .getData()
             .getUrl();
     assertThat(url)
-        .startsWith(MYID.baseUrl() + "/api/v1/oauth2/authorization?client_id=client-one")
+        .startsWith(myidUrl() + "/api/v1/oauth2/authorization?client_id=client-one")
         .contains("response_type=code", "scope=common_data", "method=strong", "state=xyz");
     var qr =
         adapter
@@ -485,6 +526,42 @@ class MyidAdapterIT {
         .isInstanceOfSatisfying(
             RestClientResponseException.class,
             e -> assertThat(e.getStatusCode().value()).isEqualTo(403));
+  }
+
+  @Test
+  void aTokenWrittenWithAnotherKeyIsReplaced() {
+    valkey
+        .opsForValue()
+        .set("t:tenant-one:myid-adapter:token:client", "c29tZXRoaW5nIGVsc2UgZW50aXJlbHk=");
+    MYID.stubFor(
+        get("/api/v1/sdk/sessions/" + SESSION)
+            .willReturn(okJson("{\"status\": \"in_progress\", \"attempts\": []}")));
+
+    adapter.getSessionStatus(TENANT, SESSION);
+    MYID.verify(1, postRequestedFor(urlPathEqualTo("/api/v1/auth/clients/access-token")));
+  }
+
+  @Test
+  void myidIsTrustedOnlyThroughItsPinnedCa() {
+    var pinned =
+        HttpClient.newBuilder().sslContext(sslBundles.getBundle("myid").createSslContext()).build();
+    assertThatThrownBy(
+            () ->
+                pinned.send(
+                    HttpRequest.newBuilder(
+                            URI.create("https://localhost:" + FALSE_MYID.httpsPort() + "/"))
+                        .build(),
+                    HttpResponse.BodyHandlers.discarding()))
+        .isInstanceOf(SSLHandshakeException.class);
+  }
+
+  @Test
+  void valkeyIsPartOfTheHealth() {
+    assertThat(
+            health.getContributor("redis") != null
+                || reactiveHealth.getContributor("redis") != null)
+        .as("a Valkey health contributor")
+        .isTrue();
   }
 
   static void assertProblem(Runnable call, int status, String code) {

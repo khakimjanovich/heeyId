@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
+import org.springframework.boot.ssl.SslBundles;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -62,6 +63,7 @@ public class MyidClient {
       MyidProperties properties,
       ObjectMapper mapper,
       RestClient.Builder builder,
+      SslBundles sslBundles,
       MyidTokens tokens,
       MyidBreaker breaker) {
     this.properties = properties;
@@ -71,6 +73,8 @@ public class MyidClient {
     var requestFactory =
         new JdkClientHttpRequestFactory(
             HttpClient.newBuilder()
+                // SAD TB-5: MyID is trusted only through its pinned CA (MYID_TRUSTED_CAS).
+                .sslContext(sslBundles.getBundle("myid").createSslContext())
                 .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(properties.connectTimeout())
                 .build());
