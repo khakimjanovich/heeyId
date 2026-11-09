@@ -1,0 +1,18 @@
+# Who may call the adapter (platform/security). Every call needs a client certificate from a trusted
+# CA (server.ssl) and a token from the trusted issuer that names the adapter's audience and carries
+# the role; anything else is refused. Which client holds the role is granted in Keycloak alone.
+platform:
+  security:
+    issuers:
+      # heeyID's Keycloak, the realm of its services. No other Keycloak is trusted.
+      - uri: ${MYID_ADAPTER_ISSUER_URI}
+        audience: ${MYID_ADAPTER_AUDIENCE}
+        roles: [myid.use]
+    # Keycloak serves HTTPS with a certificate from heeyID's CA, which the adapter's own bundle
+    # trusts: its keys are fetched over it.
+    ssl-bundle: myid-adapter
+    public-routes:
+      - /actuator/health/**
+    # Realm roles, as the token carries them (myid.use is MYID.USE).
+    roles:
+      "[/v1/**]": MYID.USE

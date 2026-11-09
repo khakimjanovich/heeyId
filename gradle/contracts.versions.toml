@@ -1,0 +1,9 @@
+# The API contracts, published by github.com/khakimjanovich/contracts (read as `contracts`).
+# One version for all of them; moving to a newer release is this one line.
+[versions]
+contracts = "1.1.0"
+
+[libraries]
+myid-adapter-api = { module = "uz.khakimjanovich.contracts:myid-adapter-api", version.ref = "contracts" }
+# The adapter's ready-made client: its client interfaces as the group myid-adapter.
+myid-adapter-client = { module = "uz.khakimjanovich.contracts:myid-adapter-client", version.ref = "contracts" }

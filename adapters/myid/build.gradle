@@ -1,0 +1,20 @@
+// The MyID adapter: a service that speaks MyID's REST API and offers it as the contracts repository's
+// myid-adapter-api. Other services call it through myid-adapter-client.
+plugins {
+    alias libs.plugins.spring.boot
+    id 'platform.java'
+    id 'platform.integration-test'
+}
+
+dependencies {
+    implementation contracts.myid.adapter.api
+    implementation libs.platform.error
+    implementation libs.platform.security // callers: a trusted issuer, the audience and the role
+    implementation libs.starter.webmvc
+    implementation libs.starter.validation
+    implementation libs.starter.actuator
+    implementation libs.platform.observability // logs, traces and metrics, the same in every service
+    implementation libs.starter.restclient // the traced RestClient.Builder every client is built from
+
+    integrationTestImplementation libs.wiremock
+}

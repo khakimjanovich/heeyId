@@ -1,0 +1,74 @@
+// The platform and the API contracts come published, by version: the platform's build plugins,
+// libraries and version catalog at platformVersion (../../gradle.properties), the contracts at
+// ../../gradle/contracts.versions.toml. GitHub Packages wants a token even for public packages:
+// GH_PACKAGES_ACTOR and GH_PACKAGES_TOKEN (read:packages); without them the build stops here.
+// To build against local checkouts instead: --include-build ../platform (see README.md).
+pluginManagement {
+    // The same check as below; the pluginManagement block runs on its own, before the rest.
+    def required = { String name ->
+        def value = providers.environmentVariable(name).getOrNull()
+        if (!value) throw new GradleException("$name is not set: it is needed to read the platform from GitHub Packages (see README.md).")
+        value
+    }
+    def platformVersion = new Properties().with { props ->
+        file('../../gradle.properties').withInputStream { props.load(it) }
+        props.getProperty('platformVersion') ?: { throw new GradleException('platformVersion is not set in ../../gradle.properties') }()
+    }
+    repositories {
+        gradlePluginPortal()
+        maven {
+            url = 'https://maven.pkg.github.com/khakimjanovich/platform'
+            content { includeGroupByRegex 'platform\\..*|uz\\.khakimjanovich\\.platform' }
+            credentials {
+                username = required('GH_PACKAGES_ACTOR')
+                password = required('GH_PACKAGES_TOKEN')
+            }
+        }
+    }
+    plugins {
+        id 'platform.java' version platformVersion
+        id 'platform.module' version platformVersion
+        id 'platform.integration-test' version platformVersion
+    }
+}
+
+rootProject.name = 'myid-adapter'
+
+def required = { String name ->
+    def value = providers.environmentVariable(name).getOrNull()
+    if (!value) throw new GradleException("$name is not set: it is needed to read the platform and the contracts from GitHub Packages (see README.md).")
+    value
+}
+def platformVersion = new Properties().with { props ->
+    file('../../gradle.properties').withInputStream { props.load(it) }
+    props.getProperty('platformVersion')
+}
+
+dependencyResolutionManagement {
+    // These repositories, not ones a machine's init script adds to every project (which would
+    // hide GitHub Packages).
+    repositoriesMode = RepositoriesMode.PREFER_SETTINGS
+    repositories {
+        mavenCentral()
+        maven {
+            url = 'https://maven.pkg.github.com/khakimjanovich/platform'
+            content { includeGroup 'uz.khakimjanovich.platform' }
+            credentials {
+                username = required('GH_PACKAGES_ACTOR')
+                password = required('GH_PACKAGES_TOKEN')
+            }
+        }
+        maven {
+            url = 'https://maven.pkg.github.com/khakimjanovich/contracts'
+            content { includeGroup 'uz.khakimjanovich.contracts' }
+            credentials {
+                username = required('GH_PACKAGES_ACTOR')
+                password = required('GH_PACKAGES_TOKEN')
+            }
+        }
+    }
+    versionCatalogs {
+        create('libs') { from("uz.khakimjanovich.platform:versioning:$platformVersion") }
+        create('contracts') { from(files('../../gradle/contracts.versions.toml')) }
+    }
+}
