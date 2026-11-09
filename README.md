@@ -16,6 +16,10 @@ Reading both from GitHub Packages needs `GH_PACKAGES_ACTOR` and `GH_PACKAGES_TOK
 |---|---|---|
 | `adapters/myid` | MyID's REST API as `myid-adapter-api` (every current MyID flow); callers use `myid-adapter-client` | `./gradlew -p adapters/myid build` |
 
+Images: `Dockerfile` builds one deployable (`--build-arg SERVICE=adapters/myid`); `.github/workflows/images.yml`
+publishes `ghcr.io/khakimjanovich/myid-adapter` (`main`, `sha-<commit>`, and `X.Y.Z` for a tag `vX.Y.Z`), which
+[heeyid-infra](../heeyid-infra) pulls. `.github/workflows/build.yml` runs each adapter's checks.
+
 To build against local checkouts instead of the published releases:
 `./gradlew -p adapters/myid build --include-build ../acquiring/contracts --include-build ../acquiring/platform`.
 

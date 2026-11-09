@@ -1,0 +1,81 @@
+# Builds this repository's images with its Dockerfile and publishes them to GitHub's registry
+# (ghcr.io/khakimjanovich/<image>), where the infra repositories pull them by version: every push to
+# main as `main` and `sha-<commit>`, every release tag vX.Y.Z as `X.Y.Z` (what production pins), for
+# linux/amd64 (servers) and linux/arm64 (ARM servers, Apple silicon laptops).
+# Pull requests build the images without publishing them. Each image carries an SBOM and build
+# provenance. Reading the platform and the contracts from GitHub Packages uses the job's own token,
+# passed as a build secret, so it never lands in a layer.
+name: images
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore: ["**/*.md", "LICENSE", "docs/**"]
+  # A pull request builds the image only when how it is built changed; its code is built and tested by build.yml.
+  pull_request:
+    paths: ["Dockerfile", ".dockerignore", ".github/workflows/images.yml", "**/build.gradle", "**/settings.gradle", "gradle.properties", "gradle/**"]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    name: ${{ matrix.image }}
+    runs-on: self-hosted # the owner's runner for this repository (GitHub's hosted runners are unavailable)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { image: myid-adapter, service: adapters/myid }
+    steps:
+      - uses: actions/checkout@v7
+      - name: The packages token is there
+        env:
+          PACKAGES_READ_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
+        run: |
+          [ -n "$PACKAGES_READ_TOKEN" ] || { echo "::error::Secret PACKAGES_READ_TOKEN is missing: a classic token with read:packages, the owner's"; exit 1; }
+      # One BuildKit builder per repository, kept on the runners' Mac between jobs and shared by all this
+      # repository's runners: its BuildKit container in the one Docker daemon keeps the base
+      # images and every layer, so they download once, and BuildKit runs jobs building at once side by side.
+      # Each runner has its own buildx settings (DOCKER_CONFIG): the first job on a runner registers the name
+      # there and finds the running container by its name. Created once on the Mac (README, CI images), and
+      # never removed after a job, as another job may be building on it.
+      - id: buildx
+        uses: docker/setup-buildx-action@v4
+        with:
+          name: heeyid-builder
+          cleanup: false
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/khakimjanovich/${{ matrix.image }}
+          tags: |
+            type=ref,event=branch
+            type=sha,format=short
+            type=semver,pattern={{version}}
+      - uses: docker/build-push-action@v7
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SERVICE=${{ matrix.service }}
+            GH_PACKAGES_ACTOR=${{ github.repository_owner }}
+          secrets: gh_packages_token=${{ secrets.PACKAGES_READ_TOKEN }} # the private platform and contracts packages
+          sbom: true
+          provenance: mode=max
