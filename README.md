@@ -20,6 +20,14 @@ Images: `Dockerfile` builds one deployable (`--build-arg SERVICE=adapters/myid`)
 publishes `ghcr.io/khakimjanovich/myid-adapter` (`main`, `sha-<commit>`, and `X.Y.Z` for a tag `vX.Y.Z`), which
 [heeyid-infra](../heeyid-infra) pulls. `.github/workflows/build.yml` runs each adapter's checks.
 
+`build.yml` and `images.yml` run on the owner's self-hosted runner `mac-heeyid` (`~/actions-runners/heeyid`,
+secret `PACKAGES_READ_TOKEN`: a classic token with `read:packages`). Images build on one BuildKit builder,
+`heeyid-builder`, created once on the Mac (if it is ever gone, the next job creates it again):
+
+```bash
+DOCKER_CONFIG=~/actions-runners/heeyid/.docker docker buildx create --name heeyid-builder --driver docker-container --bootstrap
+```
+
 To build against local checkouts instead of the published releases:
 `./gradlew -p adapters/myid build --include-build ../acquiring/contracts --include-build ../acquiring/platform`.
 
