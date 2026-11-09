@@ -37,6 +37,8 @@ import org.springframework.boot.health.registry.ReactiveHealthContributorRegistr
 import org.springframework.boot.ssl.SslBundles;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -94,7 +96,11 @@ class MyidAdapterIT {
 
   static final String TOKEN_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
-  /** Valkey with an ACL user, as heeyid-infra runs it. */
+  /**
+   * Valkey with heeyid-infra's ACL (valkey/start.sh): the adapter's user reaches only keys
+   * t:*:myid-adapter:* and only the commands it sends. The user it-admin reads and clears for the
+   * tests.
+   */
   static final GenericContainer<?> VALKEY =
       new GenericContainer<>("valkey/valkey:8.1-alpine")
           .withCommand(
@@ -106,6 +112,21 @@ class MyidAdapterIT {
               "myid-adapter",
               "on",
               ">valkey-it",
+              "resetkeys",
+              "~t:*:myid-adapter:*",
+              "resetchannels",
+              "-@all",
+              "+get",
+              "+set",
+              "+del",
+              "+ping",
+              "+info",
+              "+hello",
+              "+client|setinfo",
+              "--user",
+              "it-admin",
+              "on",
+              ">admin-it",
               "~*",
               "+@all")
           .withExposedPorts(6379);
@@ -186,7 +207,9 @@ class MyidAdapterIT {
 
   MyidAdapterClient adapter;
 
-  @Autowired StringRedisTemplate valkey;
+  /** Valkey as it-admin: the adapter's own user may not list or read TTLs. */
+  StringRedisTemplate valkey;
+
   @Autowired SslBundles sslBundles;
   @Autowired HealthContributorRegistry health;
   @Autowired ReactiveHealthContributorRegistry reactiveHealth;
@@ -194,6 +217,15 @@ class MyidAdapterIT {
   @BeforeEach
   void client() {
     MYID.resetAll();
+    if (valkey == null) {
+      var admin = new RedisStandaloneConfiguration(VALKEY.getHost(), VALKEY.getMappedPort(6379));
+      admin.setUsername("it-admin");
+      admin.setPassword("admin-it");
+      var factory = new LettuceConnectionFactory(admin);
+      factory.afterPropertiesSet();
+      factory.start();
+      valkey = new StringRedisTemplate(factory);
+    }
     valkey.delete(valkey.keys("*"));
     MYID.stubFor(
         post("/api/v1/auth/clients/access-token")
