@@ -1,13 +1,12 @@
 package uz.heeyid.myidadapter;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.absent;
 import static com.github.tomakehurst.wiremock.client.WireMock.containing;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.lessThanOrExactly;
-import static com.github.tomakehurst.wiremock.client.WireMock.moreThanOrExactly;
 import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
@@ -26,14 +25,17 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.client.support.RestClientAdapter;
 import org.springframework.web.service.annotation.HttpExchange;
 import org.springframework.web.service.invoker.HttpServiceProxyFactory;
+import org.testcontainers.containers.GenericContainer;
 import uz.khakimjanovich.contracts.myidadapter.api.client.MyidCompareServiceClient;
 import uz.khakimjanovich.contracts.myidadapter.api.client.MyidInplaceServiceClient;
 import uz.khakimjanovich.contracts.myidadapter.api.client.MyidOAuthServiceClient;
@@ -73,8 +75,25 @@ class MyidAdapterIT {
   static final UUID JOB = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
   static final WireMockServer MYID = new WireMockServer(options().dynamicPort());
 
+  /** Valkey with an ACL user, as heeyid-infra runs it. */
+  static final GenericContainer<?> VALKEY =
+      new GenericContainer<>("valkey/valkey:8.1-alpine")
+          .withCommand(
+              "valkey-server",
+              "--user",
+              "default",
+              "off",
+              "--user",
+              "myid-adapter",
+              "on",
+              ">valkey-it",
+              "~*",
+              "+@all")
+          .withExposedPorts(6379);
+
   static {
     MYID.start();
+    VALKEY.start();
     // Spring imports the tenants file before dynamic properties exist: a system property it is.
     try {
       var tenants =
@@ -105,6 +124,12 @@ class MyidAdapterIT {
     registry.add("MYID_MEDIA_URL", () -> MYID.baseUrl() + "/media");
     registry.add("MYID_CONNECT_TIMEOUT", () -> "1s");
     registry.add("MYID_READ_TIMEOUT", () -> "1s");
+    registry.add("MYID_BREAKER_FAILURES", () -> "5");
+    registry.add("MYID_BREAKER_PROBE_AFTER", () -> "30s");
+    registry.add("VALKEY_HOST", VALKEY::getHost);
+    registry.add("VALKEY_PORT", () -> VALKEY.getMappedPort(6379));
+    registry.add("VALKEY_USERNAME", () -> "myid-adapter");
+    registry.add("VALKEY_PASSWORD", () -> "valkey-it");
     registry.add("TRACING_SAMPLING", () -> "0.0"); // no collector here: nothing is traced
     registry.add("OTLP_TRACES_ENDPOINT", () -> "http://otlp.not-started.invalid/v1/traces");
     registry.add("OTLP_METRICS_ENDPOINT", () -> "http://otlp.not-started.invalid/v1/metrics");
@@ -125,9 +150,12 @@ class MyidAdapterIT {
 
   MyidAdapterClient adapter;
 
+  @Autowired StringRedisTemplate valkey;
+
   @BeforeEach
   void client() {
     MYID.resetAll();
+    valkey.delete(valkey.keys("*"));
     MYID.stubFor(
         post("/api/v1/auth/clients/access-token")
             .withRequestBody(
@@ -185,10 +213,11 @@ class MyidAdapterIT {
     assertThat(result.getProfile().getContacts().getPhone()).isEqualTo("998901234567");
     assertThat(result.getProfile().getAddress().getPermanentAddress()).isEqualTo("Tashkent");
     assertThat(result.getReuid().getExpiresAt()).isEqualTo(1722412345L);
-    // One token for both calls (or none: an earlier test's is still valid).
-    MYID.verify(
-        lessThanOrExactly(1),
-        postRequestedFor(urlPathEqualTo("/api/v1/auth/clients/access-token")));
+    // One token for both calls, kept in Valkey under the tenant's prefix until 5 min before expiry.
+    MYID.verify(1, postRequestedFor(urlPathEqualTo("/api/v1/auth/clients/access-token")));
+    assertThat(valkey.opsForValue().get("tenant-one:myid-adapter:token:client"))
+        .isEqualTo("sdk-token");
+    assertThat(valkey.getExpire("tenant-one:myid-adapter:token:client")).isBetween(3200L, 3300L);
   }
 
   @Test
@@ -276,9 +305,7 @@ class MyidAdapterIT {
 
     assertProblem(
         () -> adapter.getSessionStatus(TENANT, SESSION), 502, "MYID_ADAPTER_UNAUTHORIZED");
-    MYID.verify(
-        moreThanOrExactly(1),
-        postRequestedFor(urlPathEqualTo("/api/v1/auth/clients/access-token")));
+    MYID.verify(2, postRequestedFor(urlPathEqualTo("/api/v1/auth/clients/access-token")));
     MYID.verify(2, getRequestedFor(urlPathEqualTo("/api/v1/sdk/sessions/" + SESSION)));
   }
 
@@ -428,6 +455,7 @@ class MyidAdapterIT {
                         + "\"result_note\":\"Face not fully shown\"}],\"auth_code\":null}")));
     MYID.stubFor(
         post("/api/v1/bnpl/verify")
+            .withHeader("Authorization", absent())
             .withRequestBody(containing("bnpl_id=b-1"))
             .willReturn(
                 okJson("{\"job_id\":\"j-1\",\"bnpl_id\":\"b-1\",\"status\":2,\"result\":false}")));

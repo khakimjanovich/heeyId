@@ -18,8 +18,7 @@ import javax.net.ssl.TrustManagerFactory;
  * A certificate authority for one test run, made with the JDK's keytool: it issues the server's and
  * the callers' certificates, so no key ever sits in the repository.
  */
-// ponytail: copied into each adapter's integration tests (separate Gradle builds); move to the
-// platform's security test fixtures when another repository needs it.
+// The same helper as in the integration tests of the cards adapters (cards-infra's CA layout).
 final class ThrowawayCa {
 
   private static final String PASSWORD = "throwaway";

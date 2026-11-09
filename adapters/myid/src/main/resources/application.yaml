@@ -24,6 +24,13 @@ spring:
           # The CAs whose client certificates are accepted: heeyID's.
           truststore:
             certificate: ${MYID_ADAPTER_SSL_TRUSTED_CAS}
+  # Valkey: each tenant's MyID tokens (keys <tenant>:myid-adapter:token:*), shared by all instances.
+  data:
+    redis:
+      host: ${VALKEY_HOST}
+      port: ${VALKEY_PORT}
+      username: ${VALKEY_USERNAME}
+      password: ${VALKEY_PASSWORD}
   # Spring's own error details in the caller's language (Accept-Language).
   messages:
     basename: messages/error
@@ -37,6 +44,10 @@ myid:
   media-url: ${MYID_MEDIA_URL}
   connect-timeout: ${MYID_CONNECT_TIMEOUT}
   read-timeout: ${MYID_READ_TIMEOUT}
+  # SAD §8: open after 5 failures in a row, probe each 30 s.
+  breaker:
+    failures: ${MYID_BREAKER_FAILURES}
+    probe-after: ${MYID_BREAKER_PROBE_AFTER}
 
 # Probes reach health on their own port, inside the segment, without a client certificate.
 management:

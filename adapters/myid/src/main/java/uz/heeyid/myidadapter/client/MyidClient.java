@@ -10,10 +10,8 @@ import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADA
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.MediaType;
@@ -44,7 +42,7 @@ public class MyidClient {
   public enum Grant {
     /** /api/v1/auth/clients/access-token: Mobile SDK and Inplace. */
     CLIENT,
-    /** /api/v1/oauth2/access-token, client_credentials: WebSDK and the BNPL validation. */
+    /** /api/v1/oauth2/access-token, client_credentials: WebSDK. */
     CLIENT_CREDENTIALS,
     /** /api/v1/oauth2/access-token, password: the Backend API without personal data. */
     PASSWORD
@@ -53,22 +51,23 @@ public class MyidClient {
   /** MyID's answer: its body (missing when empty), its X-Request-ID and its HTTP status. */
   public record Answer(JsonNode body, String requestId, int status) {}
 
-  private record Token(String value, Instant renewAt) {}
-
-  // A token is renewed this long before MyID's expiry.
-  private static final Duration RENEW_BEFORE = Duration.ofMinutes(5);
-
   private final MyidProperties properties;
   private final ObjectMapper mapper;
   private final RestClient myid;
   private final RestClient media;
-  // ponytail: one adapter instance keeps its tokens in memory; move them to Valkey (SAD §8) when
-  // the adapter runs as more than one instance.
-  private final Map<String, Token> tokens = new ConcurrentHashMap<>();
+  private final MyidTokens tokens;
+  private final MyidBreaker breaker;
 
-  public MyidClient(MyidProperties properties, ObjectMapper mapper, RestClient.Builder builder) {
+  public MyidClient(
+      MyidProperties properties,
+      ObjectMapper mapper,
+      RestClient.Builder builder,
+      MyidTokens tokens,
+      MyidBreaker breaker) {
     this.properties = properties;
     this.mapper = mapper;
+    this.tokens = tokens;
+    this.breaker = breaker;
     var requestFactory =
         new JdkClientHttpRequestFactory(
             HttpClient.newBuilder()
@@ -110,11 +109,11 @@ public class MyidClient {
       boolean exchange,
       Function<RestClient, RestClient.RequestHeadersSpec<?>> call) {
     var tenant = tenant(tenantId);
-    var key = tenantId + "/" + grant;
-    var answer = send(call.apply(myid).headers(h -> h.setBearerAuth(token(key, tenant, grant))));
+    var answer =
+        send(call.apply(myid).headers(h -> h.setBearerAuth(token(tenantId, tenant, grant))));
     if (answer.status() == 403) {
-      tokens.remove(key);
-      answer = send(call.apply(myid).headers(h -> h.setBearerAuth(token(key, tenant, grant))));
+      tokens.forget(tenantId, grant);
+      answer = send(call.apply(myid).headers(h -> h.setBearerAuth(token(tenantId, tenant, grant))));
     }
     return checked(answer, exchange);
   }
@@ -133,11 +132,12 @@ public class MyidClient {
     return checked(send(call.apply(media)), false);
   }
 
-  private String token(String key, Tenant tenant, Grant grant) {
-    var cached = tokens.get(key);
-    if (cached != null && Instant.now().isBefore(cached.renewAt())) {
-      return cached.value();
-    }
+  private String token(String tenantId, Tenant tenant, Grant grant) {
+    return tokens.get(tenantId, grant, () -> issue(tenant, grant));
+  }
+
+  /** A new token from MyID; MyID refusing the credential is the contract's UNAUTHORIZED. */
+  private MyidTokens.Token issue(Tenant tenant, Grant grant) {
     var answer =
         send(
             switch (grant) {
@@ -181,20 +181,25 @@ public class MyidClient {
       throw new GeneralException(MYID_ADAPTER_UNAUTHORIZED)
           .subError(String.valueOf(answer.status()), detail(answer.body()));
     }
-    var value = answer.body().path("access_token").asString();
-    var expiresIn = Duration.ofSeconds(answer.body().path("expires_in").asLong());
-    tokens.put(key, new Token(value, Instant.now().plus(expiresIn).minus(RENEW_BEFORE)));
-    return value;
+    return new MyidTokens.Token(
+        answer.body().path("access_token").asString(),
+        Duration.ofSeconds(answer.body().path("expires_in").asLong()));
   }
 
   private Answer send(RestClient.RequestHeadersSpec<?> request) {
+    breaker.before();
     try {
       var entity = request.retrieve().onStatus(s -> true, (q, r) -> {}).toEntity(byte[].class);
-      var bytes = entity.getBody();
+      var status = entity.getStatusCode().value();
+      if (status >= 500) {
+        breaker.failed();
+      } else {
+        breaker.answered();
+      }
       var requestId = entity.getHeaders().getFirst("X-Request-ID");
-      return new Answer(
-          json(bytes), requestId == null ? "" : requestId, entity.getStatusCode().value());
+      return new Answer(json(entity.getBody()), requestId == null ? "" : requestId, status);
     } catch (ResourceAccessException e) {
+      breaker.failed();
       throw new GeneralException(MYID_ADAPTER_SERVICE_UNAVAILABLE)
           .subError(e.getClass().getSimpleName(), e.getMessage());
     }

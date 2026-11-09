@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import java.time.Duration;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
@@ -24,7 +25,16 @@ public record MyidProperties(
     @NotBlank String mediaUrl,
     @NotNull Duration connectTimeout,
     @NotNull Duration readTimeout,
+    @NotNull @Valid Breaker breaker,
     @NotEmpty Map<String, @Valid Tenant> tenants) {
+
+  /**
+   * The MyID breaker (SAD §8: 5 failures, probe each 30 s).
+   *
+   * @param failures failures in a row that open it
+   * @param probeAfter how long it stays open before one probe call
+   */
+  public record Breaker(@Positive int failures, @NotNull Duration probeAfter) {}
 
   /**
    * A tenant's MyID credential. The login is for the Backend API without personal data (the

@@ -512,12 +512,11 @@ public class MyidAdapterController
   @Override
   public ResponseEntity<VerifyIdentificationResult> verifyIdentification(
       String tenant, VerifyIdentificationRequest request) {
-    // ponytail: MyID's BNPL page names no token; the client_credentials one is assumed until MyID
-    // confirms it.
+    // MyID's BNPL page names no access token for this call, so none is sent.
+    myid.tenant(tenant);
     var answer =
-        myid.withToken(
-            tenant,
-            Grant.CLIENT_CREDENTIALS,
+        myid.plain(
+            false,
             c ->
                 c.post()
                     .uri("/api/v1/bnpl/verify")
