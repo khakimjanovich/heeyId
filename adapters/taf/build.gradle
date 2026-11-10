@@ -1,0 +1,23 @@
+// The TAF adapter: a service that speaks the TAF agent's REST API and offers it as the contracts repository's
+// taf-adapter-api. Other services call it through taf-adapter-client.
+plugins {
+    alias libs.plugins.spring.boot
+    id 'platform.java'
+    id 'platform.integration-test'
+}
+
+dependencies {
+    implementation contracts.taf.adapter.api
+    implementation libs.platform.error
+    implementation libs.platform.security // callers: a trusted issuer, the audience and the role
+    implementation libs.starter.webmvc
+    implementation libs.starter.validation
+    implementation libs.starter.actuator
+    implementation libs.platform.observability // logs, traces and metrics, the same in every service
+    implementation libs.starter.restclient // the traced RestClient.Builder every client is built from
+    implementation libs.starter.data.redis // Valkey: the adapter's TAF token, shared by all instances
+
+    integrationTestImplementation libs.wiremock
+    integrationTestImplementation libs.testcontainers.core
+    integrationTestImplementation libs.testcontainers.junit
+}
