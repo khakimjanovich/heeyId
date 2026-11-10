@@ -35,9 +35,9 @@ platform:
         http-code: 502
         title: myid-unauthorized
         is-loggable: true
-        message-en: "MyID did not accept the tenant's credential."
-        message-ru: "MyID не принял учётные данные тенанта."
-        message-uz: "MyID tenant hisob maʼlumotlarini qabul qilmadi."
+        message-en: "MyID did not accept the adapter's credential."
+        message-ru: "MyID не принял учётные данные адаптера."
+        message-uz: "MyID adapter hisob maʼlumotlarini qabul qilmadi."
       MYID_ADAPTER_SERVICE_UNAVAILABLE:
         http-code: 503
         title: myid-service-unavailable

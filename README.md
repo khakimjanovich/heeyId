@@ -44,13 +44,13 @@ No value has a default: a missing one stops startup.
 | `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_USERNAME`, `VALKEY_PASSWORD` | Valkey and the adapter's ACL user |
 | `MYID_ADAPTER_TOKEN_KEY` | AES-256 key, 32 bytes in base64: the MyID tokens in Valkey are encrypted with it (SAD TB-5) |
 | `MYID_TRUSTED_CAS` | MyID's CA (PEM, or `file:` path): MyID is trusted only through it (SAD TB-5, pinned CA) |
-| `MYID_ADAPTER_TENANTS_FILE` | a YAML file the deployment renders from Vault: `myid.tenants.<tenant>.client-id`, `client-secret`, and `username`, `password` for the Backend API without personal data |
+| `MYID_ADAPTER_CREDENTIAL_FILE` | a YAML file the deployment renders from Vault: `myid.credential.client-id`, `client-secret`, and `username`, `password` for the Backend API without personal data (one credential per installation, SAD v3.2 C-1) |
 | `MYID_ADAPTER_PORT`, `MYID_ADAPTER_MANAGEMENT_PORT` | the API port (mutual TLS) and the health port |
 | `MYID_ADAPTER_SSL_CERTIFICATE`, `MYID_ADAPTER_SSL_PRIVATE_KEY`, `MYID_ADAPTER_SSL_TRUSTED_CAS` | the adapter's certificate and the CAs of its callers |
 | `MYID_ADAPTER_ISSUER_URI`, `MYID_ADAPTER_AUDIENCE` | heeyID's Keycloak and the adapter's audience; callers need the realm role `myid.use` |
 | `TRACING_SAMPLING`, `OTLP_*_ENDPOINT` | the platform's observability |
 
-Each tenant's MyID tokens are in Valkey (keys `t:<tenant>:myid-adapter:token:<grant>`), encrypted with
+The adapter's MyID tokens are in Valkey (keys `myid-adapter:token:<grant>`), encrypted with
 AES-256-GCM, shared by all instances and kept until 5 minutes before MyID's expiry; a token written with an
 older key is replaced; a token MyID refuses (403) is renewed once.
 After 5 failures in a row (no answer in time, or a 5xx) the breaker opens: calls are

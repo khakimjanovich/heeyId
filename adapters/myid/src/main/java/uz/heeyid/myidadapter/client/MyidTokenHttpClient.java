@@ -9,7 +9,7 @@ import uz.heeyid.myidadapter.model.request.MyidClientCredentialsRequest;
 import uz.heeyid.myidadapter.model.request.MyidRefreshTokenRequest;
 
 /**
- * MyID's access tokens for a tenant. MyidClient asks for them; the answer is read whatever its
+ * MyID's access tokens for the adapter. MyidClient asks for them; the answer is read whatever its
  * status, so a refusal becomes the contract's error.
  */
 @HttpExchange(accept = "application/json")

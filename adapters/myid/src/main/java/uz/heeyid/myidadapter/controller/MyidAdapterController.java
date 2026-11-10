@@ -68,124 +68,116 @@ public class MyidAdapterController
 
   @Override
   public ResponseEntity<OpenSessionResult> openFullProofingSession(
-      String tenant, OpenFullProofingSessionRequest request) {
-    return ResponseEntity.ok(sdk.openFullProofingSession(tenant, request));
+      OpenFullProofingSessionRequest request) {
+    return ResponseEntity.ok(sdk.openFullProofingSession(request));
   }
 
   @Override
-  public ResponseEntity<OpenSessionResult> openReCheckSession(
-      String tenant, OpenReCheckSessionRequest request) {
-    return ResponseEntity.ok(sdk.openReCheckSession(tenant, request));
+  public ResponseEntity<OpenSessionResult> openReCheckSession(OpenReCheckSessionRequest request) {
+    return ResponseEntity.ok(sdk.openReCheckSession(request));
   }
 
   @Override
-  public ResponseEntity<ProofingResultResult> getResult(String tenant, GetResultRequest request) {
-    return ResponseEntity.ok(sdk.getResult(tenant, request));
+  public ResponseEntity<ProofingResultResult> getResult(GetResultRequest request) {
+    return ResponseEntity.ok(sdk.getResult(request));
   }
 
   @Override
-  public ResponseEntity<SessionStatusResult> getSessionStatus(String tenant, UUID sessionId) {
-    return ResponseEntity.ok(sdk.getSessionStatus(tenant, sessionId));
+  public ResponseEntity<SessionStatusResult> getSessionStatus(UUID sessionId) {
+    return ResponseEntity.ok(sdk.getSessionStatus(sessionId));
   }
 
   @Override
-  public ResponseEntity<AddressResult> getAddressByJob(String tenant, GetAddressRequest request) {
-    return ResponseEntity.ok(sdk.getAddressByJob(tenant, request));
+  public ResponseEntity<AddressResult> getAddressByJob(GetAddressRequest request) {
+    return ResponseEntity.ok(sdk.getAddressByJob(request));
   }
 
   @Override
-  public ResponseEntity<OpenSessionResult> openInplaceSession(
-      String tenant, OpenInplaceSessionRequest request) {
-    return ResponseEntity.ok(inplace.openInplaceSession(tenant, request));
+  public ResponseEntity<OpenSessionResult> openInplaceSession(OpenInplaceSessionRequest request) {
+    return ResponseEntity.ok(inplace.openInplaceSession(request));
   }
 
   @Override
-  public ResponseEntity<InplaceMediaResult> uploadInplaceMedia(
-      String tenant, UploadInplaceMediaRequest request) {
-    return ResponseEntity.ok(inplace.uploadInplaceMedia(tenant, request));
+  public ResponseEntity<InplaceMediaResult> uploadInplaceMedia(UploadInplaceMediaRequest request) {
+    return ResponseEntity.ok(inplace.uploadInplaceMedia(request));
   }
 
   @Override
-  public ResponseEntity<JobResult> createInplaceJob(
-      String tenant, CreateInplaceJobRequest request) {
-    return ResponseEntity.ok(inplace.createInplaceJob(tenant, request));
+  public ResponseEntity<JobResult> createInplaceJob(CreateInplaceJobRequest request) {
+    return ResponseEntity.ok(inplace.createInplaceJob(request));
   }
 
   @Override
-  public ResponseEntity<InplaceJobResultResult> getInplaceJobResult(String tenant, UUID jobId) {
+  public ResponseEntity<InplaceJobResultResult> getInplaceJobResult(UUID jobId) {
     return inplace
-        .getInplaceJobResult(tenant, jobId)
+        .getInplaceJobResult(jobId)
         .map(ResponseEntity::ok)
         .orElseGet(() -> ResponseEntity.accepted().build());
   }
 
   @Override
   public ResponseEntity<AuthorizationUrlResult> getAuthorizationUrl(
-      String tenant, AuthorizationUrlRequest request) {
-    return ResponseEntity.ok(oauth.getAuthorizationUrl(tenant, request));
+      AuthorizationUrlRequest request) {
+    return ResponseEntity.ok(oauth.getAuthorizationUrl(request));
   }
 
   @Override
-  public ResponseEntity<QrContentResult> getQrContent(String tenant, QrContentRequest request) {
-    return ResponseEntity.ok(oauth.getQrContent(tenant, request));
+  public ResponseEntity<QrContentResult> getQrContent(QrContentRequest request) {
+    return ResponseEntity.ok(oauth.getQrContent(request));
   }
 
   @Override
   public ResponseEntity<UserDataResult> exchangeAuthorizationCode(
-      String tenant, ExchangeAuthorizationCodeRequest request) {
-    return ResponseEntity.ok(oauth.exchangeAuthorizationCode(tenant, request));
+      ExchangeAuthorizationCodeRequest request) {
+    return ResponseEntity.ok(oauth.exchangeAuthorizationCode(request));
   }
 
   @Override
-  public ResponseEntity<UserDataResult> refreshUserData(
-      String tenant, RefreshUserDataRequest request) {
-    return ResponseEntity.ok(oauth.refreshUserData(tenant, request));
+  public ResponseEntity<UserDataResult> refreshUserData(RefreshUserDataRequest request) {
+    return ResponseEntity.ok(oauth.refreshUserData(request));
   }
 
   @Override
-  public ResponseEntity<OpenSessionResult> openWebSession(
-      String tenant, OpenWebSessionRequest request) {
-    return ResponseEntity.ok(web.openWebSession(tenant, request));
+  public ResponseEntity<OpenSessionResult> openWebSession(OpenWebSessionRequest request) {
+    return ResponseEntity.ok(web.openWebSession(request));
   }
 
   @Override
   public ResponseEntity<EmptyResult> closeWebSession(
-      String tenant, UUID sessionId, CloseWebSessionRequest request) {
-    return ResponseEntity.ok(web.closeWebSession(tenant, sessionId, request));
+      UUID sessionId, CloseWebSessionRequest request) {
+    return ResponseEntity.ok(web.closeWebSession(sessionId, request));
   }
 
   @Override
-  public ResponseEntity<WebSessionResultResult> getWebSessionResult(String tenant, UUID sessionId) {
-    return ResponseEntity.ok(web.getWebSessionResult(tenant, sessionId));
+  public ResponseEntity<WebSessionResultResult> getWebSessionResult(UUID sessionId) {
+    return ResponseEntity.ok(web.getWebSessionResult(sessionId));
   }
 
   @Override
-  public ResponseEntity<JobResult> createCompareTask(
-      String tenant, CreateCompareTaskRequest request) {
-    return ResponseEntity.ok(compare.createCompareTask(tenant, request));
+  public ResponseEntity<JobResult> createCompareTask(CreateCompareTaskRequest request) {
+    return ResponseEntity.ok(compare.createCompareTask(request));
   }
 
   @Override
-  public ResponseEntity<CompareResultResult> getCompareResult(
-      String tenant, CompareResultRequest request) {
+  public ResponseEntity<CompareResultResult> getCompareResult(CompareResultRequest request) {
     return compare
-        .getCompareResult(tenant, request)
+        .getCompareResult(request)
         .map(ResponseEntity::ok)
         .orElseGet(() -> ResponseEntity.accepted().build());
   }
 
   @Override
   public ResponseEntity<CompareResultResult> getCompareResultByExternalId(
-      String tenant, CompareResultByExternalIdRequest request) {
+      CompareResultByExternalIdRequest request) {
     return compare
-        .getCompareResultByExternalId(tenant, request)
+        .getCompareResultByExternalId(request)
         .map(ResponseEntity::ok)
         .orElseGet(() -> ResponseEntity.accepted().build());
   }
 
   @Override
   public ResponseEntity<VerifyIdentificationResult> verifyIdentification(
-      String tenant, VerifyIdentificationRequest request) {
-    return ResponseEntity.ok(validation.verifyIdentification(tenant, request));
+      VerifyIdentificationRequest request) {
+    return ResponseEntity.ok(validation.verifyIdentification(request));
   }
 }

@@ -22,14 +22,13 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.StringNode;
 import uz.heeyid.myidadapter.model.request.MyidClientCredentialsRequest;
 import uz.heeyid.myidadapter.property.MyidProperties;
-import uz.heeyid.myidadapter.property.MyidProperties.Tenant;
-import uz.khakimjanovich.platform.error.ErrorExceptionStatus;
+import uz.heeyid.myidadapter.property.MyidProperties.Credential;
 import uz.khakimjanovich.platform.error.GeneralException;
 import uz.khakimjanovich.platform.error.StatusThrowable;
 
 /**
  * MyID's calls (the @HttpExchange clients beside it, built in MyidHttpClientConfig) with the
- * tenant's access token, the breaker, and MyID's refusals as the contract's errors.
+ * adapter's access token, the breaker, and MyID's refusals as the contract's errors.
  */
 @Component
 public class MyidClient {
@@ -69,42 +68,32 @@ public class MyidClient {
     this.breaker = breaker;
   }
 
-  /** The tenant of X-Tenant-Id; an unknown one is the caller's mistake. */
-  public Tenant tenant(String id) {
-    var tenant = properties.tenants().get(id);
-    if (tenant == null) {
-      throw new GeneralException(ErrorExceptionStatus.VALIDATION_FAILED)
-          .subError("X-Tenant-Id", "unknown tenant");
-    }
-    return tenant;
+  /** The adapter's MyID credential. */
+  public Credential credential() {
+    return properties.credential();
   }
 
   /**
-   * A call with the tenant's token: {@code call} gets the Authorization value. MyID refusing the
+   * A call with the adapter's token: {@code call} gets the Authorization value. MyID refusing the
    * token (403) renews it once; a second 403 is the contract's UNAUTHORIZED.
    */
-  public Answer withToken(
-      String tenantId, Grant grant, Function<String, ResponseEntity<byte[]>> call) {
-    return withToken(tenantId, grant, false, call);
+  public Answer withToken(Grant grant, Function<String, ResponseEntity<byte[]>> call) {
+    return withToken(grant, false, call);
   }
 
-  /** As {@link #withToken(String, Grant, Function)}; exchange true for a code exchange. */
+  /** As {@link #withToken(Grant, Function)}; exchange true for a code exchange. */
   public Answer withToken(
-      String tenantId,
-      Grant grant,
-      boolean exchange,
-      Function<String, ResponseEntity<byte[]>> call) {
-    var tenant = tenant(tenantId);
-    var answer = send(() -> call.apply(bearer(token(tenantId, tenant, grant))));
+      Grant grant, boolean exchange, Function<String, ResponseEntity<byte[]>> call) {
+    var answer = send(() -> call.apply(bearer(token(grant))));
     if (answer.status() == 403) {
-      tokens.forget(tenantId, grant);
-      answer = send(() -> call.apply(bearer(token(tenantId, tenant, grant))));
+      tokens.forget(grant);
+      answer = send(() -> call.apply(bearer(token(grant))));
     }
     return checked(answer, exchange);
   }
 
   /**
-   * A call without the tenant's token: a code exchange (exchange true: MyID refusing it means the
+   * A call without the adapter's token: a code exchange (exchange true: MyID refusing it means the
    * code is not valid), the BNPL validation, or the media host.
    */
   public Answer plain(boolean exchange, Supplier<ResponseEntity<byte[]>> call) {
@@ -113,7 +102,7 @@ public class MyidClient {
 
   /**
    * /api/v1/users/me with the person's token; MyID answers it in up to 30 s. A 403 refuses the
-   * person's token, not the tenant's credential: MYID_CLIENT_ERROR, not UNAUTHORIZED.
+   * person's token, not the adapter's credential: MYID_CLIENT_ERROR, not UNAUTHORIZED.
    */
   public Answer me(String accessToken) {
     var answer = send(() -> longHttp.me(bearer(accessToken)));
@@ -127,12 +116,12 @@ public class MyidClient {
     return "Bearer " + token;
   }
 
-  private String token(String tenantId, Tenant tenant, Grant grant) {
-    return tokens.get(tenantId, grant, () -> issue(tenant, grant));
+  private String token(Grant grant) {
+    return tokens.get(grant, () -> issue(properties.credential(), grant));
   }
 
   /** A new token from MyID; MyID refusing the credential is the contract's UNAUTHORIZED. */
-  private MyidTokens.Token issue(Tenant tenant, Grant grant) {
+  private MyidTokens.Token issue(Credential credential, Grant grant) {
     var answer =
         send(
             switch (grant) {
@@ -140,26 +129,26 @@ public class MyidClient {
                   () ->
                       tokenHttp.clientToken(
                           new MyidClientCredentialsRequest(
-                              tenant.clientId(), tenant.clientSecret()));
+                              credential.clientId(), credential.clientSecret()));
               case CLIENT_CREDENTIALS ->
                   () ->
                       tokenHttp.oauthToken(
                           form(
                               "grant_type", "client_credentials",
-                              "client_id", tenant.clientId(),
-                              "client_secret", tenant.clientSecret()));
+                              "client_id", credential.clientId(),
+                              "client_secret", credential.clientSecret()));
               case PASSWORD -> {
-                if (tenant.username() == null || tenant.password() == null) {
+                if (credential.username() == null || credential.password() == null) {
                   throw new GeneralException(MYID_ADAPTER_UNAUTHORIZED)
-                      .subError("credential", "the tenant has no MyID login for this flow");
+                      .subError("credential", "the adapter has no MyID login for this flow");
                 }
                 yield () ->
                     tokenHttp.oauthToken(
                         form(
                             "grant_type", "password",
-                            "username", tenant.username(),
-                            "password", tenant.password(),
-                            "client_id", tenant.clientId()));
+                            "username", credential.username(),
+                            "password", credential.password(),
+                            "client_id", credential.clientId()));
               }
             });
     if (answer.status() >= 500 || answer.status() == 429 || answer.status() == 422) {

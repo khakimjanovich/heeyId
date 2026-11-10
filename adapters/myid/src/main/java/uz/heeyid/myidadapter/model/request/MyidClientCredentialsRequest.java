@@ -6,7 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
-/** MyID POST /api/v1/auth/clients/access-token: the tenant's client credential. */
+/** MyID POST /api/v1/auth/clients/access-token: the adapter's client credential. */
 @Data
 @Builder
 @AllArgsConstructor

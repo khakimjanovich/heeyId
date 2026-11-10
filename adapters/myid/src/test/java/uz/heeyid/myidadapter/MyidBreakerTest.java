@@ -8,7 +8,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 import uz.heeyid.myidadapter.client.MyidBreaker;
 import uz.heeyid.myidadapter.property.MyidProperties;
@@ -49,7 +48,7 @@ class MyidBreakerTest {
               Duration.ofSeconds(30),
               new MyidProperties.Breaker(5, Duration.ofSeconds(30)),
               "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
-              Map.of()),
+              new MyidProperties.Credential("client", "secret", null, null)),
           clock,
           registry);
 
