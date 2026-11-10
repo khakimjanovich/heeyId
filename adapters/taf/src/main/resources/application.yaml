@@ -1,0 +1,66 @@
+# Callers reach the adapter only over mutual TLS: its certificate, and theirs from a trusted CA.
+server:
+  port: ${TAF_ADAPTER_PORT}
+  ssl:
+    bundle: taf-adapter
+    client-auth: need
+
+spring:
+  application:
+    name: taf-adapter
+  config:
+    import:
+      - classpath:properties/security.yaml
+      - classpath:properties/taf-adapter-exception.yaml
+  ssl:
+    bundle:
+      pem:
+        taf-adapter:
+          keystore:
+            certificate: ${TAF_ADAPTER_SSL_CERTIFICATE}
+            private-key: ${TAF_ADAPTER_SSL_PRIVATE_KEY}
+          # The CAs whose client certificates are accepted: heeyID's.
+          truststore:
+            certificate: ${TAF_ADAPTER_SSL_TRUSTED_CAS}
+        # SAD TB-5: the CA that the TAF hosts' certificates must come from; no other CA is trusted for TAF.
+        taf:
+          truststore:
+            certificate: ${TAF_TRUSTED_CAS}
+  # Valkey: the adapter's TAF token (key taf-adapter:token, encrypted), shared by all instances.
+  data:
+    redis:
+      host: ${VALKEY_HOST}
+      port: ${VALKEY_PORT}
+      username: ${VALKEY_USERNAME}
+      password: ${VALKEY_PASSWORD}
+  # Spring's own error details in the caller's language (Accept-Language).
+  messages:
+    basename: messages/error
+    fallback-to-system-locale: false
+    always-use-message-format: true
+
+# TAF's hosts and how long we wait (SAD C-15: 5 s for each call).
+taf:
+  auth-url: ${TAF_AUTH_URL}
+  agent-url: ${TAF_AGENT_URL}
+  health-url: ${TAF_HEALTH_URL}
+  connect-timeout: ${TAF_CONNECT_TIMEOUT}
+  read-timeout: ${TAF_READ_TIMEOUT}
+  # The adapter's TAF credential, one per installation (OAuth 2.0 client_credentials).
+  credential:
+    client-id: ${TAF_CLIENT_ID}
+    client-secret: ${TAF_CLIENT_SECRET}
+    scope: ${TAF_SCOPE}
+  # SAD TB-5: the AES-256 key (base64, 32 bytes) of the TAF token in Valkey.
+  token-key: ${TAF_ADAPTER_TOKEN_KEY}
+  # SAD C-15: open after 5 failures in a row, probe each 30 s.
+  breaker:
+    failures: ${TAF_BREAKER_FAILURES}
+    probe-after: ${TAF_BREAKER_PROBE_AFTER}
+
+# Probes reach health on their own port, inside the segment, without a client certificate.
+management:
+  server:
+    port: ${TAF_ADAPTER_MANAGEMENT_PORT}
+    ssl:
+      enabled: false

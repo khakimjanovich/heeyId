@@ -34,6 +34,7 @@ jobs:
         include:
           - { image: myid-adapter, service: adapters/myid }
           - { image: sms-adapter, service: adapters/sms }
+          - { image: taf-adapter, service: adapters/taf }
           - { image: push-adapter, service: adapters/push }
     steps:
       - uses: actions/checkout@v7
