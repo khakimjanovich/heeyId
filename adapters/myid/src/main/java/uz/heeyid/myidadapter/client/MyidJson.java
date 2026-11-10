@@ -1,13 +1,17 @@
 package uz.heeyid.myidadapter.client;
 
 import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADAPTER_MYID_CLIENT_ERROR;
+import static uz.heeyid.myidadapter.utils.ConstantUtils.PNG_SIGNATURE_HEX;
+import static uz.heeyid.myidadapter.utils.ConstantUtils.TOKEN_CLAIM_JOB_ID;
+import static uz.heeyid.myidadapter.utils.MyidReasonCodeConstants.MYID_POOR_IMAGE_CODES;
+import static uz.heeyid.myidadapter.utils.MyidReasonCodeConstants.MYID_SERVICE_UNAVAILABLE_CODES;
 
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
@@ -27,14 +31,6 @@ import uz.khakimjanovich.platform.error.GeneralException;
  */
 @Component
 public class MyidJson {
-
-  private static final Set<Integer> POOR_IMAGE =
-      Set.of(14, 17, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33);
-  private static final Set<Integer> SERVICE_UNAVAILABLE =
-      Set.of(5, 11, 12, 13, 15, 16, 18, 19, 38, 101, 103);
-
-  private static final String JOB_ID = "job_id";
-  private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
 
   private final ObjectMapper mapper;
 
@@ -81,7 +77,7 @@ public class MyidJson {
           Base64.getUrlDecoder()
               .decode(accessToken.substring(start, accessToken.indexOf('.', start)));
       JsonNode claims = mapper.readTree(payload);
-      var jobId = claims.path(JOB_ID);
+      var jobId = claims.path(TOKEN_CLAIM_JOB_ID);
       return jobId.isString() ? jobId.asString() : null;
     } catch (RuntimeException e) {
       return null;
@@ -93,10 +89,10 @@ public class MyidJson {
     if (code == null) {
       return ReasonKey.UNKNOWN;
     }
-    if (POOR_IMAGE.contains(code)) {
+    if (MYID_POOR_IMAGE_CODES.contains(code)) {
       return ReasonKey.POOR_IMAGE;
     }
-    if (SERVICE_UNAVAILABLE.contains(code)) {
+    if (MYID_SERVICE_UNAVAILABLE_CODES.contains(code)) {
       return ReasonKey.SERVICE_UNAVAILABLE;
     }
     return switch (code) {
@@ -116,7 +112,7 @@ public class MyidJson {
 
   /** What is wrong with the image, only for a POOR_IMAGE code. */
   public static @Nullable ImageIssue imageIssue(@Nullable Integer code) {
-    if (code == null || !POOR_IMAGE.contains(code)) {
+    if (code == null || !MYID_POOR_IMAGE_CODES.contains(code)) {
       return null;
     }
     return switch (code) {
@@ -156,7 +152,8 @@ public class MyidJson {
 
   /** A PNG by its 8-byte signature; MyID takes png or jpeg, so anything else is sent as jpeg. */
   public static boolean isPng(byte[] photo) {
-    return photo.length >= PNG.length && Arrays.equals(photo, 0, PNG.length, PNG, 0, PNG.length);
+    var png = HexFormat.of().parseHex(PNG_SIGNATURE_HEX);
+    return photo.length >= png.length && Arrays.equals(photo, 0, png.length, png, 0, png.length);
   }
 
   static JsonNode camel(JsonNode node) {

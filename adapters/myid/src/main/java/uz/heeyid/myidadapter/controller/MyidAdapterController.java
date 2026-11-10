@@ -7,6 +7,8 @@ import static uz.heeyid.myidadapter.client.MyidJson.imageIssue;
 import static uz.heeyid.myidadapter.client.MyidJson.isPng;
 import static uz.heeyid.myidadapter.client.MyidJson.parse;
 import static uz.heeyid.myidadapter.client.MyidJson.reasonKey;
+import static uz.heeyid.myidadapter.utils.ConstantUtils.QR_EXTRA_KEY;
+import static uz.heeyid.myidadapter.utils.ConstantUtils.QR_EXTRA_VALUE;
 import static uz.khakimjanovich.contracts.myidadapter.api.model.MyidAdapterStatusCode.SUCCESS;
 
 import java.util.Collection;
@@ -14,7 +16,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.ByteArrayResource;
@@ -96,9 +97,6 @@ public class MyidAdapterController
         MyidWebServiceApi,
         MyidCompareServiceApi,
         MyidValidationServiceApi {
-
-  private static final Pattern EXTRA_KEY = Pattern.compile("^[A-Za-z0-9_-]{1,50}$");
-  private static final Pattern EXTRA_VALUE = Pattern.compile("^[A-Za-z0-9._~-]{1,100}$");
 
   private final MyidClient myid;
   private final MyidJson json;
@@ -355,9 +353,9 @@ public class MyidAdapterController
         (key, value) -> {
           if (key.equals("client_id")
               || key.equals("method")
-              || !EXTRA_KEY.matcher(key).matches()
+              || !QR_EXTRA_KEY.matcher(key).matches()
               || value == null
-              || !EXTRA_VALUE.matcher(value).matches()) {
+              || !QR_EXTRA_VALUE.matcher(value).matches()) {
             throw invalid(
                 "extraInfo",
                 "a key matches ^[A-Za-z0-9_-]{1,50}$ and is not client_id or method; "

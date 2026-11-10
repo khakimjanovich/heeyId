@@ -17,6 +17,12 @@ dependencies {
     implementation libs.starter.restclient // the traced RestClient.Builder every client is built from
     implementation libs.starter.data.redis // Valkey: each tenant's MyID tokens, shared by all instances
 
+    // ConstantsTest. ArchUnit comes as in ecom: the platform catalog's archunit has no version of its
+    // own; spring-modulith-core (version from the Modulith BOM) brings it.
+    testImplementation platform(libs.spring.modulith.bom)
+    testImplementation libs.modulith.core
+    testImplementation libs.archunit
+
     integrationTestImplementation libs.wiremock
     integrationTestImplementation libs.testcontainers.core
     integrationTestImplementation libs.testcontainers.junit
