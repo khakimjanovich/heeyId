@@ -46,6 +46,7 @@ class MyidBreakerTest {
               "http://media",
               Duration.ofSeconds(1),
               Duration.ofSeconds(1),
+              Duration.ofSeconds(30),
               new MyidProperties.Breaker(5, Duration.ofSeconds(30)),
               "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
               Map.of()),

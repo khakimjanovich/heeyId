@@ -4,6 +4,8 @@ import static uz.heeyid.myidadapter.client.MyidClient.form;
 import static uz.heeyid.myidadapter.client.MyidJson.body;
 import static uz.heeyid.myidadapter.client.MyidJson.dataUri;
 import static uz.heeyid.myidadapter.client.MyidJson.imageIssue;
+import static uz.heeyid.myidadapter.client.MyidJson.isPng;
+import static uz.heeyid.myidadapter.client.MyidJson.parse;
 import static uz.heeyid.myidadapter.client.MyidJson.reasonKey;
 import static uz.khakimjanovich.contracts.myidadapter.api.model.MyidAdapterStatusCode.SUCCESS;
 
@@ -12,6 +14,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.jspecify.annotations.Nullable;
 import org.springframework.core.io.ByteArrayResource;
@@ -94,6 +97,9 @@ public class MyidAdapterController
         MyidCompareServiceApi,
         MyidValidationServiceApi {
 
+  private static final Pattern EXTRA_KEY = Pattern.compile("^[A-Za-z0-9_-]{1,50}$");
+  private static final Pattern EXTRA_VALUE = Pattern.compile("^[A-Za-z0-9._~-]{1,100}$");
+
   private final MyidClient myid;
   private final MyidJson json;
   private final MyidProperties properties;
@@ -150,7 +156,7 @@ public class MyidAdapterController
                     .body(session));
     return ResponseEntity.ok(
         new OpenSessionResult(
-            answer.requestId(), SUCCESS, json.read(answer.body(), Session.class)));
+            answer.requestId(), SUCCESS, parse(answer, b -> json.read(b, Session.class))));
   }
 
   @Override
@@ -161,11 +167,17 @@ public class MyidAdapterController
             Grant.CLIENT,
             true,
             c -> c.get().uri("/api/v1/sdk/data?code={code}", request.getCode()));
-    var result = json.read(answer.body().path("data"), ProofingResult.class);
-    var reuid = answer.body().path("reuid");
-    if (result.getReuid() == null && reuid.isObject()) {
-      result.setReuid(json.read(reuid, Reuid.class));
-    }
+    var result =
+        parse(
+            answer,
+            b -> {
+              var data = json.read(b.required("data"), ProofingResult.class);
+              var reuid = b.path("reuid");
+              if (data.getReuid() == null && reuid.isObject()) {
+                data.setReuid(json.read(reuid, Reuid.class));
+              }
+              return data;
+            });
     return ResponseEntity.ok(new ProofingResultResult(answer.requestId(), SUCCESS, result));
   }
 
@@ -174,15 +186,21 @@ public class MyidAdapterController
     var answer =
         myid.withToken(
             tenant, Grant.CLIENT, c -> c.get().uri("/api/v1/sdk/sessions/{id}", sessionId));
-    var body = ((ObjectNode) answer.body()).deepCopy();
-    body.put("status", body.path("status").asString().toUpperCase(Locale.ROOT));
-    var status = json.read(body, SessionStatus.class);
-    status
-        .getAttempts()
-        .forEach(
-            a ->
-                a.reasonKey(a.getReasonCode() == null ? null : reasonKey(a.getReasonCode()))
-                    .imageIssue(imageIssue(a.getReasonCode())));
+    var status =
+        parse(
+            answer,
+            b -> {
+              var body = ((ObjectNode) b).deepCopy();
+              body.put("status", body.required("status").asString().toUpperCase(Locale.ROOT));
+              var read = json.read(body, SessionStatus.class);
+              read.getAttempts()
+                  .forEach(
+                      a ->
+                          a.reasonKey(
+                                  a.getReasonCode() == null ? null : reasonKey(a.getReasonCode()))
+                              .imageIssue(imageIssue(a.getReasonCode())));
+              return read;
+            });
     return ResponseEntity.ok(new SessionStatusResult(answer.requestId(), SUCCESS, status));
   }
 
@@ -198,9 +216,12 @@ public class MyidAdapterController
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body("job_id", request.getJobId().toString())));
     var address =
-        new JobAddress(
-            UUID.fromString(answer.body().path("response_id").asString()),
-            json.read(answer.body().path("profile").path("address"), Address.class));
+        parse(
+            answer,
+            b ->
+                new JobAddress(
+                    UUID.fromString(b.required("response_id").asString()),
+                    json.read(b.required("profile").required("address"), Address.class)));
     return ResponseEntity.ok(new AddressResult(answer.requestId(), SUCCESS, address));
   }
 
@@ -209,11 +230,12 @@ public class MyidAdapterController
   @Override
   public ResponseEntity<OpenSessionResult> openInplaceSession(
       String tenant, OpenInplaceSessionRequest request) {
-    var byDocument =
-        (request.getPassData() != null || request.getPinfl() != null)
-            && request.getBirthDate() != null;
-    if (!byDocument && request.getReuid() == null) {
-      throw invalid("passData", "give passData or pinfl with birthDate, or reuid");
+    var documents = (request.getPassData() == null ? 0 : 1) + (request.getPinfl() == null ? 0 : 1);
+    var byDocument = documents == 1 && request.getBirthDate() != null && request.getReuid() == null;
+    var byReuid = request.getReuid() != null && documents == 0 && request.getBirthDate() == null;
+    if (!byDocument && !byReuid) {
+      throw invalid(
+          "passData", "give one of: passData with birthDate, pinfl with birthDate, or reuid alone");
     }
     var session =
         body(
@@ -233,7 +255,7 @@ public class MyidAdapterController
                     .body(session));
     return ResponseEntity.ok(
         new OpenSessionResult(
-            answer.requestId(), SUCCESS, json.read(answer.body(), Session.class)));
+            answer.requestId(), SUCCESS, parse(answer, b -> json.read(b, Session.class))));
   }
 
   @Override
@@ -255,7 +277,7 @@ public class MyidAdapterController
                     .body(parts));
     return ResponseEntity.ok(
         new InplaceMediaResult(
-            answer.requestId(), SUCCESS, json.read(answer.body(), InplaceMedia.class)));
+            answer.requestId(), SUCCESS, parse(answer, b -> json.read(b, InplaceMedia.class))));
   }
 
   @Override
@@ -279,18 +301,23 @@ public class MyidAdapterController
   @Override
   public ResponseEntity<InplaceJobResultResult> getInplaceJobResult(String tenant, UUID jobId) {
     var answer =
-        myid.withToken(tenant, Grant.CLIENT, c -> c.get().uri("/api/v1/inplace/jobs/{id}", jobId));
+        myid.withTokenLong(
+            tenant, Grant.CLIENT, c -> c.get().uri("/api/v1/inplace/jobs/{id}", jobId));
     if (answer.status() == 202) {
       return ResponseEntity.accepted().build();
     }
-    var result = json.read(answer.body().path("data"), InplaceJobResult.class);
-    var reuid = answer.body().path("reuid");
-    if (result.getReuid() == null && reuid.isObject()) {
-      result.setReuid(json.read(reuid, Reuid.class));
-    }
-    result
-        .reasonKey(reasonKey(result.getResultCode()))
-        .imageIssue(imageIssue(result.getResultCode()));
+    var result =
+        parse(
+            answer,
+            b -> {
+              var data = json.read(b.required("data"), InplaceJobResult.class);
+              var reuid = b.path("reuid");
+              if (data.getReuid() == null && reuid.isObject()) {
+                data.setReuid(json.read(reuid, Reuid.class));
+              }
+              return data.reasonKey(reasonKey(data.getResultCode()))
+                  .imageIssue(imageIssue(data.getResultCode()));
+            });
     return ResponseEntity.ok(new InplaceJobResultResult(answer.requestId(), SUCCESS, result));
   }
 
@@ -319,7 +346,25 @@ public class MyidAdapterController
         UriComponentsBuilder.newInstance()
             .queryParam("client_id", myid.tenant(tenant).clientId())
             .queryParam("method", request.getMethod().getValue());
-    request.getExtraInfo().forEach(qr::queryParam);
+    var extraInfo =
+        request.getExtraInfo() == null ? Map.<String, String>of() : request.getExtraInfo();
+    if (extraInfo.size() > 10) {
+      throw invalid("extraInfo", "at most 10 pairs");
+    }
+    extraInfo.forEach(
+        (key, value) -> {
+          if (key.equals("client_id")
+              || key.equals("method")
+              || !EXTRA_KEY.matcher(key).matches()
+              || value == null
+              || !EXTRA_VALUE.matcher(value).matches()) {
+            throw invalid(
+                "extraInfo",
+                "a key matches ^[A-Za-z0-9_-]{1,50}$ and is not client_id or method; "
+                    + "a value matches ^[A-Za-z0-9._~-]{1,100}$");
+          }
+          qr.queryParam(key, value);
+        });
     return ResponseEntity.ok(
         new QrContentResult("", SUCCESS, new QrContent(qr.encode().build().getQuery())));
   }
@@ -348,7 +393,9 @@ public class MyidAdapterController
                             "method",
                             request.getMethod() == null ? null : request.getMethod().getValue(),
                             "scope",
-                            request.getScope().isEmpty() ? null : scope(request.getScope()))));
+                            request.getScope() == null || request.getScope().isEmpty()
+                                ? null
+                                : scope(request.getScope()))));
     return userData(token);
   }
 
@@ -362,9 +409,9 @@ public class MyidAdapterController
             c ->
                 c.post()
                     .uri("/api/v1/oauth2/refresh-token")
-                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .contentType(MediaType.APPLICATION_JSON)
                     .body(
-                        form(
+                        body(
                             "refresh_token", request.getRefreshToken(),
                             "client_id", credential.clientId())));
     return userData(token);
@@ -372,19 +419,21 @@ public class MyidAdapterController
 
   /** The person's data with the person's token of a code or a refresh token. */
   private ResponseEntity<UserDataResult> userData(Answer token) {
-    var accessToken = token.body().path("access_token").asString();
-    var me =
-        myid.plain(
-            false, c -> c.get().uri("/api/v1/users/me").headers(h -> h.setBearerAuth(accessToken)));
-    var profile = ((ObjectNode) me.body().path("profile")).deepCopy();
-    var method = profile.remove("authentication_method");
+    var accessToken = parse(token, b -> b.required("access_token").asString());
+    var me = myid.me(accessToken);
     var data =
-        new UserData()
-            .jobId(json.jobIdOf(accessToken))
-            .scope(stringOrNull(token.body().path("scope")))
-            .authenticationMethod(method == null ? null : stringOrNull(method))
-            .refreshToken(stringOrNull(token.body().path("refresh_token")))
-            .profile(json.read(profile, UserProfile.class));
+        parse(
+            me,
+            b -> {
+              var profile = ((ObjectNode) b.required("profile")).deepCopy();
+              var method = profile.remove("authentication_method");
+              return new UserData()
+                  .jobId(json.jobIdOf(accessToken))
+                  .scope(stringOrNull(token.body().path("scope")))
+                  .authenticationMethod(method == null ? null : stringOrNull(method))
+                  .refreshToken(stringOrNull(token.body().path("refresh_token")))
+                  .profile(json.read(profile, UserProfile.class));
+            });
     return ResponseEntity.ok(new UserDataResult(me.requestId(), SUCCESS, data));
   }
 
@@ -408,7 +457,7 @@ public class MyidAdapterController
                             "ip_address", request.getIpAddress())));
     return ResponseEntity.ok(
         new OpenSessionResult(
-            answer.requestId(), SUCCESS, json.read(answer.body(), Session.class)));
+            answer.requestId(), SUCCESS, parse(answer, b -> json.read(b, Session.class))));
   }
 
   @Override
@@ -433,13 +482,18 @@ public class MyidAdapterController
             tenant,
             Grant.CLIENT_CREDENTIALS,
             c -> c.post().uri("/api/v1/web/sessions/{id}/result", sessionId));
-    var result = json.read(answer.body(), WebSessionResult.class);
-    result
-        .getJobs()
-        .forEach(
-            j ->
-                j.reasonKey(reasonKey(j.getResultCode()))
-                    .imageIssue(imageIssue(j.getResultCode())));
+    var result =
+        parse(
+            answer,
+            b -> {
+              var read = json.read(b, WebSessionResult.class);
+              read.getJobs()
+                  .forEach(
+                      j ->
+                          j.reasonKey(reasonKey(j.getResultCode()))
+                              .imageIssue(imageIssue(j.getResultCode())));
+              return read;
+            });
     return ResponseEntity.ok(new WebSessionResultResult(answer.requestId(), SUCCESS, result));
   }
 
@@ -448,6 +502,13 @@ public class MyidAdapterController
   @Override
   public ResponseEntity<JobResult> createCompareTask(
       String tenant, CreateCompareTaskRequest request) {
+    var comparison = Boolean.TRUE.equals(request.getComparison());
+    if (!comparison && !Boolean.TRUE.equals(request.getLiveness())) {
+      throw invalid("liveness", "liveness or comparison must be true");
+    }
+    if (comparison && request.getPhotoFromPassport() == null) {
+      throw invalid("photoFromPassport", "required when comparison is true");
+    }
     var clientId = myid.tenant(tenant).clientId();
     var task =
         body(
@@ -496,14 +557,21 @@ public class MyidAdapterController
   private ResponseEntity<CompareResultResult> compareResult(
       String tenant, String path, Map<String, Object> query) {
     var answer =
-        myid.withToken(
+        myid.withTokenLong(
             tenant,
             Grant.PASSWORD,
             c -> c.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(query));
-    var result = json.read(answer.body(), CompareResult.class);
-    result
-        .reasonKey(reasonKey(result.getResultCode()))
-        .imageIssue(imageIssue(result.getResultCode()));
+    if (answer.status() == 202) {
+      return ResponseEntity.accepted().build();
+    }
+    var result =
+        parse(
+            answer,
+            b -> {
+              var read = json.read(b, CompareResult.class);
+              return read.reasonKey(reasonKey(read.getResultCode()))
+                  .imageIssue(imageIssue(read.getResultCode()));
+            });
     return ResponseEntity.ok(new CompareResultResult(answer.requestId(), SUCCESS, result));
   }
 
@@ -512,7 +580,7 @@ public class MyidAdapterController
   @Override
   public ResponseEntity<VerifyIdentificationResult> verifyIdentification(
       String tenant, VerifyIdentificationRequest request) {
-    // MyID's BNPL page names no access token for this call, so none is sent.
+    // As the contract says: JSON with no credential, as the BNPL page's example shows.
     myid.tenant(tenant);
     var answer =
         myid.plain(
@@ -520,36 +588,39 @@ public class MyidAdapterController
             c ->
                 c.post()
                     .uri("/api/v1/bnpl/verify")
-                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .contentType(MediaType.APPLICATION_JSON)
                     .body(
-                        form(
+                        body(
                             "job_id", request.getJobId(),
                             "bank_id", request.getBankId(),
                             "bnpl_id", request.getBnplId(),
                             "pinfl", request.getPinfl())));
-    var body = answer.body();
-    var status = body.path("status").asInt();
     var verification =
-        new Verification(
-            body.path("job_id").asString(),
-            body.path("bnpl_id").asString(),
-            MyidJson.verificationStatus(status),
-            status,
-            body.path("result").asBoolean());
+        parse(
+            answer,
+            b -> {
+              var status = b.required("status").asInt();
+              return new Verification(
+                  b.required("job_id").asString(),
+                  b.required("bnpl_id").asString(),
+                  MyidJson.verificationStatus(status),
+                  status,
+                  b.required("result").asBoolean());
+            });
     return ResponseEntity.ok(
         new VerifyIdentificationResult(answer.requestId(), SUCCESS, verification));
   }
 
   private ResponseEntity<JobResult> job(Answer answer) {
     return ResponseEntity.ok(
-        new JobResult(answer.requestId(), SUCCESS, json.read(answer.body(), Job.class)));
+        new JobResult(answer.requestId(), SUCCESS, parse(answer, b -> json.read(b, Job.class))));
   }
 
   private static ByteArrayResource file(byte[] photo, String name) {
     return new ByteArrayResource(photo) {
       @Override
       public String getFilename() {
-        return name + (photo.length > 1 && photo[0] == (byte) 0x89 ? ".png" : ".jpg");
+        return name + (isPng(photo) ? ".png" : ".jpg");
       }
     };
   }

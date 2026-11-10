@@ -18,6 +18,9 @@ import org.springframework.validation.annotation.Validated;
  *
  * @param baseUrl MyID's host ({myid_host})
  * @param mediaUrl MyID's media host, for the Inplace photo ({myid_media_host})
+ * @param readTimeout the wait for MyID's calls that it answers in 5 s
+ * @param longReadTimeout the wait for the calls that MyID answers in 30 s: /users/me, the Inplace
+ *     job result and the two compare results
  * @param tokenKey the AES-256 key (base64) that encrypts the MyID tokens in Valkey (SAD TB-5)
  */
 @Validated
@@ -27,6 +30,7 @@ public record MyidProperties(
     @NotBlank String mediaUrl,
     @NotNull Duration connectTimeout,
     @NotNull Duration readTimeout,
+    @NotNull Duration longReadTimeout,
     @NotNull @Valid Breaker breaker,
     @NotBlank @Pattern(regexp = "^[A-Za-z0-9+/]{43}=$", message = "must be 32 bytes in base64")
         String tokenKey,
