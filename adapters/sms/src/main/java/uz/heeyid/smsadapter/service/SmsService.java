@@ -6,6 +6,7 @@ import static uz.heeyid.smsadapter.constant.SmsAdapterExceptionStatus.SMS_ADAPTE
 import static uz.heeyid.smsadapter.utils.ConstantUtils.CLAIM_MARGIN;
 import static uz.heeyid.smsadapter.utils.ConstantUtils.MESSAGE_ID_ALPHABET;
 import static uz.heeyid.smsadapter.utils.ConstantUtils.MESSAGE_ID_LENGTH;
+import static uz.khakimjanovich.platform.error.ErrorExceptionStatus.INTERNAL_ERROR;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -177,7 +178,8 @@ public class SmsService {
           .formatHex(
               MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
     } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException(e);
+      // Every JDK has SHA-256: it cannot happen.
+      throw new GeneralException(INTERNAL_ERROR).subError("no SHA-256", e.toString());
     }
   }
 }

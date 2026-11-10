@@ -4,6 +4,7 @@ import static uz.heeyid.myidadapter.utils.ConstantUtils.TOKEN_CIPHER;
 import static uz.heeyid.myidadapter.utils.ConstantUtils.TOKEN_IV_BYTES;
 import static uz.heeyid.myidadapter.utils.ConstantUtils.TOKEN_RENEW_BEFORE;
 import static uz.heeyid.myidadapter.utils.ConstantUtils.TOKEN_TAG_BITS;
+import static uz.khakimjanovich.platform.error.ErrorExceptionStatus.INTERNAL_ERROR;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +25,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
 import uz.heeyid.myidadapter.property.MyidProperties;
+import uz.khakimjanovich.platform.error.GeneralException;
 
 /**
  * The adapter's MyID access tokens in Valkey (SAD §8), shared by every adapter instance. SAD TB-5:
@@ -86,7 +88,9 @@ public class MyidTokens {
           .encodeToString(
               ByteBuffer.allocate(iv.length + sealed.length).put(iv).put(sealed).array());
     } catch (GeneralSecurityException e) {
-      throw new IllegalStateException("cannot encrypt a MyID token", e);
+      // A cipher of the JDK that fails: it cannot happen with a 32-byte key.
+      throw new GeneralException(INTERNAL_ERROR)
+          .subError("cannot encrypt a MyID token", e.toString());
     }
   }
 
@@ -105,7 +109,9 @@ public class MyidTokens {
       log.warn("MyID token in Valkey not readable with the current token key | key: {}", name);
       return null;
     } catch (GeneralSecurityException e) {
-      throw new IllegalStateException("cannot decrypt a MyID token", e);
+      // A cipher of the JDK that fails: it cannot happen with a 32-byte key.
+      throw new GeneralException(INTERNAL_ERROR)
+          .subError("cannot decrypt a MyID token", e.toString());
     }
   }
 }
