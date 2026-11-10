@@ -1,0 +1,40 @@
+# Errors the SMS adapter returns (sms-adapter-api): HTTP status, title and message in English,
+# Russian and Uzbek. A vendor's error code and description travel in subErrors.
+platform:
+  error:
+    codes:
+      SMS_ADAPTER_KEY_CONFLICT:
+        http-code: 409
+        title: sms-key-conflict
+        is-loggable: false
+        message-en: "The idempotency key was used with another request."
+        message-ru: "Ключ идемпотентности уже использован с другим запросом."
+        message-uz: "Idempotentlik kaliti boshqa soʻrov bilan ishlatilgan."
+      SMS_ADAPTER_KEY_IN_USE:
+        http-code: 409
+        title: sms-key-in-use
+        is-loggable: false
+        message-en: "A send with this key is not finished. Try again shortly."
+        message-ru: "Отправка с этим ключом ещё не завершена. Повторите чуть позже."
+        message-uz: "Bu kalit bilan yuborish hali tugamagan. Birozdan keyin qayta urining."
+      SMS_ADAPTER_MESSAGE_REFUSED:
+        http-code: 502
+        title: sms-message-refused
+        is-loggable: true
+        message-en: "The SMS vendor refused the message."
+        message-ru: "SMS-провайдер отклонил сообщение."
+        message-uz: "SMS provayderi xabarni rad etdi."
+      SMS_ADAPTER_SERVICE_UNAVAILABLE:
+        http-code: 503
+        title: sms-service-unavailable
+        is-loggable: true
+        message-en: "No SMS vendor is available now. Nothing was sent."
+        message-ru: "Сейчас нет доступного SMS-провайдера. Ничего не отправлено."
+        message-uz: "Hozir hech bir SMS provayderi ishlamayapti. Hech narsa yuborilmadi."
+      SMS_ADAPTER_NOT_FOUND:
+        http-code: 404
+        title: sms-not-found
+        is-loggable: false
+        message-en: "There is no such message."
+        message-ru: "Такого сообщения нет."
+        message-uz: "Bunday xabar yoʻq."

@@ -1,0 +1,68 @@
+# Callers reach the adapter only over mutual TLS: its certificate, and theirs from a trusted CA.
+# The vendors' delivery reports come on their own port (sms.callback-port), plain HTTP behind the
+# bank's ingress.
+server:
+  port: ${SMS_ADAPTER_PORT}
+  ssl:
+    bundle: sms-adapter
+    client-auth: need
+
+spring:
+  application:
+    name: sms-adapter
+  config:
+    import:
+      - classpath:properties/security.yaml
+      - classpath:properties/sms-adapter-exception.yaml
+  ssl:
+    bundle:
+      pem:
+        sms-adapter:
+          keystore:
+            certificate: ${SMS_ADAPTER_SSL_CERTIFICATE}
+            private-key: ${SMS_ADAPTER_SSL_PRIVATE_KEY}
+          # The CAs whose client certificates are accepted: heeyID's.
+          truststore:
+            certificate: ${SMS_ADAPTER_SSL_TRUSTED_CAS}
+  # Valkey: the idempotency keys and the message statuses (keys sms-adapter:*), shared by all instances.
+  data:
+    redis:
+      host: ${VALKEY_HOST}
+      port: ${VALKEY_PORT}
+      username: ${VALKEY_USERNAME}
+      password: ${VALKEY_PASSWORD}
+  # Spring's own error details in the caller's language (Accept-Language).
+  messages:
+    basename: messages/error
+    fallback-to-system-locale: false
+    always-use-message-format: true
+
+# The vendors, tried in order: the active one, then the failover list (comma separated, may be
+# empty). A vendor's settings are needed only when it is named here.
+sms:
+  active-vendor: ${SMS_ACTIVE_VENDOR}
+  failover: ${SMS_FAILOVER_VENDORS}
+  message-id-prefix: ${SMS_MESSAGE_ID_PREFIX}
+  retention: ${SMS_RETENTION}
+  callback-port: ${SMS_ADAPTER_CALLBACK_PORT}
+  # SAD §8: open after 5 failures in a row, probe each 30 s.
+  breaker:
+    failures: ${SMS_BREAKER_FAILURES}
+    probe-after: ${SMS_BREAKER_PROBE_AFTER}
+
+# SMS Xabar (Play Mobile SMS-Broker API), when xabar is named above.
+xabar:
+  base-url: ${XABAR_BASE_URL}
+  username: ${XABAR_USERNAME}
+  password: ${XABAR_PASSWORD}
+  originator: ${XABAR_ORIGINATOR}
+  connect-timeout: ${XABAR_CONNECT_TIMEOUT}
+  read-timeout: ${XABAR_READ_TIMEOUT}
+  callback-secret: ${XABAR_CALLBACK_SECRET}
+
+# Probes reach health on their own port, inside the segment, without a client certificate.
+management:
+  server:
+    port: ${SMS_ADAPTER_MANAGEMENT_PORT}
+    ssl:
+      enabled: false

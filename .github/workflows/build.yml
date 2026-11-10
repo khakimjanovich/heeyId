@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        adapter: [myid]
+        adapter: [myid, sms]
     steps:
       - uses: actions/checkout@v7
       - name: The packages token is there

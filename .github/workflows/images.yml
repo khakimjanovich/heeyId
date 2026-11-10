@@ -33,6 +33,7 @@ jobs:
       matrix:
         include:
           - { image: myid-adapter, service: adapters/myid }
+          - { image: sms-adapter, service: adapters/sms }
     steps:
       - uses: actions/checkout@v7
       - name: The packages token is there
