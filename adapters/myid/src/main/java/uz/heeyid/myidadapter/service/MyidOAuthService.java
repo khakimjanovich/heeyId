@@ -1,7 +1,6 @@
 package uz.heeyid.myidadapter.service;
 
 import static uz.heeyid.myidadapter.client.MyidClient.form;
-import static uz.heeyid.myidadapter.client.MyidJson.body;
 import static uz.heeyid.myidadapter.client.MyidJson.parse;
 import static uz.heeyid.myidadapter.utils.ConstantUtils.QR_EXTRA_KEY;
 import static uz.heeyid.myidadapter.utils.ConstantUtils.QR_EXTRA_VALUE;
@@ -20,7 +19,8 @@ import tools.jackson.databind.node.ObjectNode;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Answer;
 import uz.heeyid.myidadapter.client.MyidJson;
-import uz.heeyid.myidadapter.config.MyidProperties;
+import uz.heeyid.myidadapter.model.request.MyidRefreshTokenRequest;
+import uz.heeyid.myidadapter.property.MyidProperties;
 import uz.khakimjanovich.contracts.myidadapter.api.model.AuthorizationUrl;
 import uz.khakimjanovich.contracts.myidadapter.api.model.AuthorizationUrlRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.AuthorizationUrlResult;
@@ -124,9 +124,8 @@ public class MyidOAuthService {
                     .uri("/api/v1/oauth2/refresh-token")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(
-                        body(
-                            "refresh_token", request.getRefreshToken(),
-                            "client_id", credential.clientId())));
+                        new MyidRefreshTokenRequest(
+                            request.getRefreshToken(), credential.clientId())));
     return userData(token);
   }
 

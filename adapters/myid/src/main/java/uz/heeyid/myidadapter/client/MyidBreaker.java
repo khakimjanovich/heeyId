@@ -8,7 +8,7 @@ import java.time.Clock;
 import java.time.Instant;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
-import uz.heeyid.myidadapter.config.MyidProperties;
+import uz.heeyid.myidadapter.property.MyidProperties;
 import uz.khakimjanovich.platform.error.GeneralException;
 
 /**

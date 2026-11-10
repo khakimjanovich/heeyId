@@ -23,7 +23,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
-import uz.heeyid.myidadapter.config.MyidProperties;
+import uz.heeyid.myidadapter.property.MyidProperties;
 
 /**
  * The MyID access tokens of each tenant in Valkey (SAD §8), shared by every adapter instance. SAD

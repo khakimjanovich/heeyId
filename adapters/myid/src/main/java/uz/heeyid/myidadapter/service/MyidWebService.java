@@ -1,6 +1,5 @@
 package uz.heeyid.myidadapter.service;
 
-import static uz.heeyid.myidadapter.client.MyidJson.body;
 import static uz.heeyid.myidadapter.client.MyidJson.imageIssue;
 import static uz.heeyid.myidadapter.client.MyidJson.parse;
 import static uz.heeyid.myidadapter.client.MyidJson.reasonKey;
@@ -13,6 +12,8 @@ import org.springframework.stereotype.Service;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
 import uz.heeyid.myidadapter.client.MyidJson;
+import uz.heeyid.myidadapter.model.request.MyidCloseWebSessionRequest;
+import uz.heeyid.myidadapter.model.request.MyidWebSessionRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.CloseWebSessionRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.EmptyResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.OpenSessionResult;
@@ -39,10 +40,10 @@ public class MyidWebService {
                     .uri("/api/v1/web/sessions")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(
-                        body(
-                            "max_retries", request.getMaxRetries(),
-                            "external_id", request.getExternalId().toString(),
-                            "ip_address", request.getIpAddress())));
+                        new MyidWebSessionRequest(
+                            request.getMaxRetries(),
+                            request.getExternalId().toString(),
+                            request.getIpAddress())));
     return new OpenSessionResult(
         answer.requestId(), SUCCESS, parse(answer, b -> json.read(b, Session.class)));
   }
@@ -57,7 +58,7 @@ public class MyidWebService {
                 c.post()
                     .uri("/api/v1/web/sessions/{id}/client/close", sessionId)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(body("code", request.getCode())));
+                    .body(new MyidCloseWebSessionRequest(request.getCode())));
     return new EmptyResult(answer.requestId(), SUCCESS);
   }
 

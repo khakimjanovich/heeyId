@@ -1,6 +1,5 @@
 package uz.heeyid.myidadapter.service;
 
-import static uz.heeyid.myidadapter.client.MyidJson.body;
 import static uz.heeyid.myidadapter.client.MyidJson.imageIssue;
 import static uz.heeyid.myidadapter.client.MyidJson.parse;
 import static uz.heeyid.myidadapter.client.MyidJson.reasonKey;
@@ -9,7 +8,6 @@ import static uz.heeyid.myidadapter.utils.MyidRequestUtils.text;
 import static uz.khakimjanovich.contracts.myidadapter.api.model.MyidAdapterStatusCode.SUCCESS;
 
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -18,6 +16,8 @@ import tools.jackson.databind.node.ObjectNode;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
 import uz.heeyid.myidadapter.client.MyidJson;
+import uz.heeyid.myidadapter.model.request.MyidJobIdRequest;
+import uz.heeyid.myidadapter.model.request.MyidSdkSessionRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.Address;
 import uz.khakimjanovich.contracts.myidadapter.api.model.AddressResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.GetAddressRequest;
@@ -50,26 +50,28 @@ public class MyidSdkService {
       throw invalid("birthDate", "required with passData");
     }
     var session =
-        body(
-            "threshold", request.getThreshold(),
-            "pinfl", request.getPinfl(),
-            "pass_data", request.getPassData(),
-            "birth_date", text(request.getBirthDate()),
-            "is_resident", request.getIsResident(),
-            "phone_number", request.getPhoneNumber());
+        MyidSdkSessionRequest.builder()
+            .threshold(request.getThreshold())
+            .pinfl(request.getPinfl())
+            .passData(request.getPassData())
+            .birthDate(text(request.getBirthDate()))
+            .isResident(request.getIsResident())
+            .phoneNumber(request.getPhoneNumber())
+            .build();
     return openSdkSession(tenant, session);
   }
 
   public OpenSessionResult openReCheckSession(String tenant, OpenReCheckSessionRequest request) {
     var session =
-        body(
-            "reuid", request.getReuid().toString(),
-            "threshold", request.getThreshold(),
-            "phone_number", request.getPhoneNumber());
+        MyidSdkSessionRequest.builder()
+            .reuid(request.getReuid().toString())
+            .threshold(request.getThreshold())
+            .phoneNumber(request.getPhoneNumber())
+            .build();
     return openSdkSession(tenant, session);
   }
 
-  private OpenSessionResult openSdkSession(String tenant, Map<String, Object> session) {
+  private OpenSessionResult openSdkSession(String tenant, MyidSdkSessionRequest session) {
     var answer =
         myid.withToken(
             tenant,
@@ -135,7 +137,7 @@ public class MyidSdkService {
                 c.post()
                     .uri("/api/v1/profile/address")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(body("job_id", request.getJobId().toString())));
+                    .body(new MyidJobIdRequest(request.getJobId().toString())));
     var address =
         parse(
             answer,

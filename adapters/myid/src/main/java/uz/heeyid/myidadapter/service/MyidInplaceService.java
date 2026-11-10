@@ -1,6 +1,5 @@
 package uz.heeyid.myidadapter.service;
 
-import static uz.heeyid.myidadapter.client.MyidJson.body;
 import static uz.heeyid.myidadapter.client.MyidJson.imageIssue;
 import static uz.heeyid.myidadapter.client.MyidJson.isPng;
 import static uz.heeyid.myidadapter.client.MyidJson.parse;
@@ -19,6 +18,8 @@ import org.springframework.util.LinkedMultiValueMap;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
 import uz.heeyid.myidadapter.client.MyidJson;
+import uz.heeyid.myidadapter.model.request.MyidInplaceJobRequest;
+import uz.heeyid.myidadapter.model.request.MyidInplaceSessionRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.CreateInplaceJobRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.InplaceJobResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.InplaceJobResultResult;
@@ -48,12 +49,13 @@ public class MyidInplaceService {
           "passData", "give one of: passData with birthDate, pinfl with birthDate, or reuid alone");
     }
     var session =
-        body(
-            "pass_data", request.getPassData(),
-            "pinfl", request.getPinfl(),
-            "birth_date", text(request.getBirthDate()),
-            "is_resident", request.getIsResident(),
-            "reuid", text(request.getReuid()));
+        MyidInplaceSessionRequest.builder()
+            .passData(request.getPassData())
+            .pinfl(request.getPinfl())
+            .birthDate(text(request.getBirthDate()))
+            .isResident(request.getIsResident())
+            .reuid(text(request.getReuid()))
+            .build();
     var answer =
         myid.withToken(
             tenant,
@@ -96,9 +98,8 @@ public class MyidInplaceService {
                     .uri("/api/v1/inplace/jobs")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(
-                        body(
-                            "session_id", request.getSessionId().toString(),
-                            "media_id", request.getMediaId().toString())));
+                        new MyidInplaceJobRequest(
+                            request.getSessionId().toString(), request.getMediaId().toString())));
     return json.job(answer);
   }
 

@@ -1,6 +1,5 @@
 package uz.heeyid.myidadapter.service;
 
-import static uz.heeyid.myidadapter.client.MyidJson.body;
 import static uz.heeyid.myidadapter.client.MyidJson.dataUri;
 import static uz.heeyid.myidadapter.client.MyidJson.imageIssue;
 import static uz.heeyid.myidadapter.client.MyidJson.parse;
@@ -8,7 +7,6 @@ import static uz.heeyid.myidadapter.client.MyidJson.reasonKey;
 import static uz.heeyid.myidadapter.utils.MyidRequestUtils.invalid;
 import static uz.khakimjanovich.contracts.myidadapter.api.model.MyidAdapterStatusCode.SUCCESS;
 
-import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -16,6 +14,10 @@ import org.springframework.stereotype.Service;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
 import uz.heeyid.myidadapter.client.MyidJson;
+import uz.heeyid.myidadapter.model.request.MyidCompareByExternalIdRequest;
+import uz.heeyid.myidadapter.model.request.MyidCompareTaskRequest;
+import uz.heeyid.myidadapter.model.request.MyidCompareTaskRequest.PhotoFromCamera;
+import uz.heeyid.myidadapter.model.request.MyidJobIdRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.CompareResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.CompareResultByExternalIdRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.CompareResultRequest;
@@ -41,21 +43,22 @@ public class MyidCompareService {
     }
     var clientId = myid.tenant(tenant).clientId();
     var task =
-        body(
-            "photo_from_camera", Map.of("front", dataUri(request.getPhotoFront())),
-            "photo_from_passport",
+        MyidCompareTaskRequest.builder()
+            .photoFromCamera(new PhotoFromCamera(dataUri(request.getPhotoFront())))
+            .photoFromPassport(
                 request.getPhotoFromPassport() == null
                     ? null
-                    : dataUri(request.getPhotoFromPassport()),
-            "agreed_on_terms", request.getAgreedOnTerms(),
-            "client_id", clientId,
-            "liveness", request.getLiveness(),
-            "comparison", request.getComparison(),
-            "external_id", request.getExternalId(),
-            "threshold", request.getThreshold(),
-            "pinfl", request.getPinfl(),
-            "pass_data", request.getPassData(),
-            "phone", request.getPhone());
+                    : dataUri(request.getPhotoFromPassport()))
+            .agreedOnTerms(request.getAgreedOnTerms())
+            .clientId(clientId)
+            .liveness(request.getLiveness())
+            .comparison(request.getComparison())
+            .externalId(request.getExternalId())
+            .threshold(request.getThreshold())
+            .pinfl(request.getPinfl())
+            .passData(request.getPassData())
+            .phone(request.getPhone())
+            .build();
     var answer =
         myid.withToken(
             tenant,
@@ -72,7 +75,9 @@ public class MyidCompareService {
   public Optional<CompareResultResult> getCompareResult(
       String tenant, CompareResultRequest request) {
     return compareResult(
-        tenant, "/api/v1/authentication/compare-photos-status", body("job_id", request.getJobId()));
+        tenant,
+        "/api/v1/authentication/compare-photos-status",
+        new MyidJobIdRequest(request.getJobId()));
   }
 
   /** Empty while MyID still processes the task (its 202). */
@@ -81,11 +86,11 @@ public class MyidCompareService {
     return compareResult(
         tenant,
         "/api/v1/authentication/compare-photos-status-by-external",
-        body("external_id", request.getExternalId(), "client_id", myid.tenant(tenant).clientId()));
+        new MyidCompareByExternalIdRequest(
+            request.getExternalId(), myid.tenant(tenant).clientId()));
   }
 
-  private Optional<CompareResultResult> compareResult(
-      String tenant, String path, Map<String, Object> query) {
+  private Optional<CompareResultResult> compareResult(String tenant, String path, Object query) {
     var answer =
         myid.withTokenLong(
             tenant,

@@ -9,8 +9,6 @@ import static uz.heeyid.myidadapter.utils.MyidReasonCodeConstants.MYID_SERVICE_U
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -65,17 +63,6 @@ public class MyidJson {
       throw MyidClient.refusal(MYID_ADAPTER_MYID_CLIENT_ERROR, answer)
           .subError("answer", "not of the documented shape: " + e.getClass().getSimpleName());
     }
-  }
-
-  /** A request body from name, value pairs, MyID's names; a null value is left out. */
-  public static Map<String, Object> body(@Nullable Object... pairs) {
-    var body = new LinkedHashMap<String, Object>();
-    for (var i = 0; i < pairs.length; i += 2) {
-      if (pairs[i + 1] != null) {
-        body.put((String) pairs[i], pairs[i + 1]);
-      }
-    }
-    return body;
   }
 
   /** The job_id claim of a MyID access token (a JWT), read without a check: it is for support. */

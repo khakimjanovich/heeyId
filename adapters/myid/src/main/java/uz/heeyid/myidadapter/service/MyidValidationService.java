@@ -1,6 +1,5 @@
 package uz.heeyid.myidadapter.service;
 
-import static uz.heeyid.myidadapter.client.MyidJson.body;
 import static uz.heeyid.myidadapter.client.MyidJson.parse;
 import static uz.khakimjanovich.contracts.myidadapter.api.model.MyidAdapterStatusCode.SUCCESS;
 
@@ -9,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidJson;
+import uz.heeyid.myidadapter.model.request.MyidBnplVerifyRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.Verification;
 import uz.khakimjanovich.contracts.myidadapter.api.model.VerifyIdentificationRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.VerifyIdentificationResult;
@@ -32,11 +32,11 @@ public class MyidValidationService {
                     .uri("/api/v1/bnpl/verify")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(
-                        body(
-                            "job_id", request.getJobId(),
-                            "bank_id", request.getBankId(),
-                            "bnpl_id", request.getBnplId(),
-                            "pinfl", request.getPinfl())));
+                        new MyidBnplVerifyRequest(
+                            request.getJobId(),
+                            request.getBankId(),
+                            request.getBnplId(),
+                            request.getPinfl())));
     var verification =
         parse(
             answer,

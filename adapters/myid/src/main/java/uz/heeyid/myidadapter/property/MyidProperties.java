@@ -1,4 +1,4 @@
-package uz.heeyid.myidadapter.config;
+package uz.heeyid.myidadapter.property;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
