@@ -15,9 +15,10 @@ Reading both from GitHub Packages needs `GH_PACKAGES_ACTOR` and `GH_PACKAGES_TOK
 | Deployable | What | Built by |
 |---|---|---|
 | `adapters/myid` | MyID's REST API as `myid-adapter-api` (every current MyID flow); callers use `myid-adapter-client` | `./gradlew -p adapters/myid build` |
+| `adapters/sms` | The bank's SMS vendors (SMS Xabar first) as `sms-adapter-api`; callers use `sms-adapter-client` | `./gradlew -p adapters/sms build` |
 
 Images: `Dockerfile` builds one deployable (`--build-arg SERVICE=adapters/myid`); `.github/workflows/images.yml`
-publishes `ghcr.io/khakimjanovich/myid-adapter` (`main`, `sha-<commit>`, and `X.Y.Z` for a tag `vX.Y.Z`), which
+publishes `ghcr.io/khakimjanovich/myid-adapter` and `ghcr.io/khakimjanovich/sms-adapter` (`main`, `sha-<commit>`, and `X.Y.Z` for a tag `vX.Y.Z`), which
 [heeyid-infra](../heeyid-infra) pulls. `.github/workflows/build.yml` runs each adapter's checks.
 
 `build.yml` and `images.yml` run on the owner's self-hosted runner `mac-heeyid` (`~/actions-runners/heeyid`,
@@ -56,3 +57,77 @@ older key is replaced; a token MyID refuses (403) is renewed once.
 After 5 failures in a row (no answer in time, or a 5xx) the breaker opens: calls are
 `MYID_ADAPTER_SERVICE_UNAVAILABLE` without a call to MyID, one probe each 30 s, and the gauge
 `myid.breaker.open` is 1. No request or response body reaches a log.
+
+### SMS adapter
+
+One port for the bank's SMS vendors. The caller gives the final text and an idempotency key; the
+adapter sends through `SMS_ACTIVE_VENDOR`, then through `SMS_FAILOVER_VENDORS` in order when a vendor
+is down. Message rules (BRD FR-75, FR-75a; SRS-NTF-01…04): `OTP` in the side apps always and in the
+master app only while TAF is down; `SECURITY_NOTICE` for a new session, a new phone, a password
+reset, a number on hold or a block (the gateway sends none to a number on hold). Push never carries a
+code; that rule is the gateway's.
+
+| Vendor answer | Result | Next vendor |
+|---|---|---|
+| 2xx | `ACCEPTED` | no |
+| request sent, no answer in time | `UNKNOWN` (the vendor may send it) | no: a code never goes out twice |
+| no connection, 5xx, 429, wrong login, wrong URL, breaker open, Xabar error 100 or 102 | tried next; all down: `SMS_ADAPTER_SERVICE_UNAVAILABLE` (503), key free | yes |
+| Xabar 400 with any other error code | `SMS_ADAPTER_MESSAGE_REFUSED` (502), key free | no |
+
+The same key and body answer the first result and send nothing; the same key with another body is
+`SMS_ADAPTER_KEY_CONFLICT`. Keys and statuses are in Valkey (`sms-adapter:key:*`,
+`sms-adapter:message:*`, ACL `+get +set +del`), kept for `SMS_RETENTION`; Valkey keeps no text and no
+phone number. No body reaches a log. Each vendor has a breaker (gauge
+`sms.vendor.breaker.open{vendor}`).
+
+Delivery reports: Xabar pushes statuses to the partner URL given to Xabar,
+`https://<ingress>/delivery-reports/xabar/<XABAR_CALLBACK_SECRET>` (Xabar adds `/status`). They come
+on `SMS_ADAPTER_CALLBACK_PORT`: plain HTTP, no token, reached only through the bank's ingress, which
+ends TLS and lets in only Xabar's addresses. That port serves only `/delivery-reports/**`, and the API
+port refuses those paths. A wrong secret is 404. Status words: `delivered`, `expired`, failures
+(`rejected`, `undelivered`, …), anything else `REPORTED` with the raw word in `vendorStatus`. Xabar's
+document lists no words and no callback auth: ask Xabar for both.
+
+No value has a default: a missing one stops startup. A vendor's values are needed only when it is
+named in `SMS_ACTIVE_VENDOR` or `SMS_FAILOVER_VENDORS`.
+
+| Variable | What |
+|---|---|
+| `SMS_ACTIVE_VENDOR` | the vendor that sends first: `xabar` |
+| `SMS_FAILOVER_VENDORS` | the vendors tried next, comma separated, in order; empty for none |
+| `SMS_MESSAGE_ID_PREFIX` | 1 to 8 of `a-z0-9`, e.g. `hid`: the start of every message id (Xabar sees it; ids are 20 characters) |
+| `SMS_RETENTION` | e.g. `7d`: how long a status and its key are kept |
+| `SMS_BREAKER_FAILURES`, `SMS_BREAKER_PROBE_AFTER` | each vendor's breaker (SAD §8: `5`, `30s`) |
+| `SMS_ADAPTER_CALLBACK_PORT` | the port of the vendors' delivery reports |
+| `XABAR_BASE_URL` | `https://send.smsxabar.uz/broker-api` (the adapter calls `/send`) |
+| `XABAR_USERNAME`, `XABAR_PASSWORD` | the adapter's Basic login at Xabar |
+| `XABAR_ORIGINATOR` | the sender name registered at Xabar |
+| `XABAR_CONNECT_TIMEOUT`, `XABAR_READ_TIMEOUT` | e.g. `2s`, `10s` |
+| `XABAR_CALLBACK_SECRET` | 32 to 128 URL-safe characters, the secret in the partner URL |
+| `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_USERNAME`, `VALKEY_PASSWORD` | Valkey and the adapter's ACL user (`~sms-adapter:*`) |
+| `SMS_ADAPTER_PORT`, `SMS_ADAPTER_MANAGEMENT_PORT` | the API port (mutual TLS) and the health port |
+| `SMS_ADAPTER_SSL_CERTIFICATE`, `SMS_ADAPTER_SSL_PRIVATE_KEY`, `SMS_ADAPTER_SSL_TRUSTED_CAS` | the adapter's certificate and the CAs of its callers |
+| `SMS_ADAPTER_ISSUER_URI`, `SMS_ADAPTER_AUDIENCE` | heeyID's Keycloak and the adapter's audience; callers need the realm role `sms.use` |
+| `TRACING_SAMPLING`, `OTLP_*_ENDPOINT` | the platform's observability |
+
+#### Adding a second vendor
+
+A vendor is one package, `adapters/sms/src/main/java/uz/heeyid/smsadapter/vendor/<name>/`, laid out as
+`vendor/xabar` (the platform's package rules hold inside it):
+
+1. `client/`: an `@HttpExchange` interface for the vendor's send call, and a class that implements
+   `SmsVendor`: `name()` is the name used in `SMS_ACTIVE_VENDOR` / `SMS_FAILOVER_VENDORS`,
+   `longestCall()` is its connect plus read timeout, and `send()` returns a `VendorOutcome` and never
+   throws: `ACCEPTED`, `UNKNOWN` (sent, no answer in time), `REFUSED` (the message itself is wrong),
+   `UNAVAILABLE` (nothing sent; the next vendor is tried).
+2. `property/`: its `@ConfigurationProperties` record with no defaults, and its `${…}` values in
+   `application.yaml`.
+3. `config/`: a `@Configuration` with `@ConditionalOnVendor("<name>")` and
+   `@EnableConfigurationProperties`, which builds the client and the `SmsVendor` bean. Nothing else
+   registers it: `VendorConfig` finds every `SmsVendor` bean by name.
+4. If the vendor reports deliveries: `model/` for its push body, a `service/` that checks its secret
+   and calls `SmsService.report(...)`, and a `controller/` on `/delivery-reports/<name>/...` (both
+   `@ConditionalOnVendor`). The callback port and the token-free route `POST /delivery-reports/**`
+   already cover it.
+5. Its constants in `utils/<Name>Constants`, a simulator in `SmsAdapterIT` (WireMock), and its
+   variables in the table above. `SmsAdapterIT.Backup` shows the smallest vendor bean.
