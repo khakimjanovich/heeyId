@@ -25,6 +25,8 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.time.LocalDate;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -55,6 +57,7 @@ import uz.khakimjanovich.contracts.myidadapter.api.client.MyidValidationServiceC
 import uz.khakimjanovich.contracts.myidadapter.api.client.MyidWebServiceClient;
 import uz.khakimjanovich.contracts.myidadapter.api.model.AuthenticationMethod;
 import uz.khakimjanovich.contracts.myidadapter.api.model.AuthorizationUrlRequest;
+import uz.khakimjanovich.contracts.myidadapter.api.model.CompareResultByExternalIdRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.CompareResultRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.CreateCompareTaskRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.DataScope;
@@ -65,6 +68,7 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.ImageIssue;
 import uz.khakimjanovich.contracts.myidadapter.api.model.OpenFullProofingSessionRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.QrContentRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ReasonKey;
+import uz.khakimjanovich.contracts.myidadapter.api.model.RefreshUserDataRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.SessionState;
 import uz.khakimjanovich.contracts.myidadapter.api.model.UploadInplaceMediaRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.VerificationStatus;
@@ -167,6 +171,7 @@ class MyidAdapterIT {
     registry.add("MYID_ADAPTER_TOKEN_KEY", () -> TOKEN_KEY);
     registry.add("MYID_CONNECT_TIMEOUT", () -> "1s");
     registry.add("MYID_READ_TIMEOUT", () -> "1s");
+    registry.add("MYID_LONG_READ_TIMEOUT", () -> "3s");
     registry.add("MYID_BREAKER_FAILURES", () -> "5");
     registry.add("MYID_BREAKER_PROBE_AFTER", () -> "30s");
     registry.add("VALKEY_HOST", VALKEY::getHost);
@@ -337,7 +342,15 @@ class MyidAdapterIT {
     MYID.stubFor(
         get(urlPathEqualTo("/api/v1/sdk/data"))
             .withQueryParam("code", equalTo("blocked"))
-            .willReturn(aResponse().withStatus(429).withBody("{\"ttl\":3600}")));
+            .willReturn(
+                aResponse()
+                    .withStatus(429)
+                    .withHeader("X-Request-ID", "r-429")
+                    .withBody("{\"ttl\":3600}")));
+    MYID.stubFor(
+        get(urlPathEqualTo("/api/v1/sdk/data"))
+            .withQueryParam("code", equalTo("missing-field"))
+            .willReturn(aResponse().withStatus(422).withBody("{\"detail\":\"code: required\"}")));
     MYID.stubFor(
         get(urlPathEqualTo("/api/v1/sdk/data"))
             .withQueryParam("code", equalTo("down"))
@@ -354,10 +367,18 @@ class MyidAdapterIT {
         () -> adapter.getResult(TENANT, new GetResultRequest("used")),
         400,
         "MYID_ADAPTER_CODE_NOT_VALID");
+    var blocked =
+        assertProblem(
+            () -> adapter.getResult(TENANT, new GetResultRequest("blocked")),
+            429,
+            "MYID_ADAPTER_USER_BLOCKED");
+    assertThat(blocked.getResponseHeaders().getFirst("Retry-After")).isEqualTo("3600");
+    assertThat(blocked.getResponseBodyAsString())
+        .contains("{\"code\":\"X-Request-ID\",\"message\":\"r-429\"}");
     assertProblem(
-        () -> adapter.getResult(TENANT, new GetResultRequest("blocked")),
-        429,
-        "MYID_ADAPTER_USER_BLOCKED");
+        () -> adapter.getResult(TENANT, new GetResultRequest("missing-field")),
+        502,
+        "MYID_ADAPTER_MYID_CLIENT_ERROR");
     assertProblem(
         () -> adapter.getResult(TENANT, new GetResultRequest("down")),
         503,
@@ -512,6 +533,109 @@ class MyidAdapterIT {
   }
 
   @Test
+  void bothCompareResultsAnswer202WhileMyidWorks() {
+    MYID.stubFor(
+        post("/api/v1/oauth2/access-token")
+            .withRequestBody(containing("grant_type=password"))
+            .willReturn(okJson("{\"access_token\":\"compare-token\",\"expires_in\":3600}")));
+    MYID.stubFor(
+        post(urlPathEqualTo("/api/v1/authentication/compare-photos-status"))
+            .willReturn(aResponse().withStatus(202)));
+    MYID.stubFor(
+        post(urlPathEqualTo("/api/v1/authentication/compare-photos-status-by-external"))
+            .willReturn(aResponse().withStatus(202)));
+
+    assertThat(
+            adapter
+                .getCompareResult(TENANT, new CompareResultRequest("job-9"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(202);
+    assertThat(
+            adapter
+                .getCompareResultByExternalId(TENANT, new CompareResultByExternalIdRequest("ext-1"))
+                .getStatusCode()
+                .value())
+        .isEqualTo(202);
+  }
+
+  @Test
+  void aCompareTaskAndAQrTextFollowTheContractsRules() {
+    assertProblem(
+        () ->
+            adapter.createCompareTask(
+                TENANT, new CreateCompareTaskRequest(new byte[] {1}, true, false, false)),
+        400,
+        "VALIDATION_FAILED");
+    assertProblem(
+        () ->
+            adapter.createCompareTask(
+                TENANT, new CreateCompareTaskRequest(new byte[] {1}, true, false, true)),
+        400,
+        "VALIDATION_FAILED");
+    MYID.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/authentication/compare-photos-task")));
+
+    for (var extraInfo :
+        List.of(
+            Map.of("client_id", "other"),
+            Map.of("method", "simple"),
+            Map.of("branch", "a&b=c"),
+            Map.of("bad key", "x"))) {
+      assertProblem(
+          () ->
+              adapter.getQrContent(
+                  TENANT, new QrContentRequest(AuthenticationMethod.STRONG).extraInfo(extraInfo)),
+          400,
+          "VALIDATION_FAILED");
+    }
+    var eleven = new HashMap<String, String>();
+    for (var i = 0; i < 11; i++) {
+      eleven.put("k" + i, "v");
+    }
+    assertProblem(
+        () ->
+            adapter.getQrContent(
+                TENANT, new QrContentRequest(AuthenticationMethod.STRONG).extraInfo(eleven)),
+        400,
+        "VALIDATION_FAILED");
+  }
+
+  @Test
+  void aRefreshTokenGoesAsJsonAndGivesThePersonsData() {
+    MYID.stubFor(
+        post("/api/v1/oauth2/refresh-token")
+            .withHeader("Content-Type", containing("application/json"))
+            .withRequestBody(
+                equalToJson("{\"refresh_token\":\"refresh-1\",\"client_id\":\"client-one\"}"))
+            .willReturn(
+                okJson(
+                    "{\"access_token\":\"person-token\",\"expires_in\":3600,"
+                        + "\"refresh_token\":\"refresh-2\"}")));
+    MYID.stubFor(
+        get("/api/v1/users/me")
+            .withHeader("Authorization", equalTo("Bearer person-token"))
+            .willReturn(okJson("{\"profile\":{\"common_data\":{\"first_name\":\"ALI\"}}}")));
+
+    var data =
+        adapter
+            .refreshUserData(TENANT, new RefreshUserDataRequest("refresh-1"))
+            .getBody()
+            .getData();
+    assertThat(data.getRefreshToken()).isEqualTo("refresh-2");
+    assertThat(data.getProfile().getCommonData().getFirstName()).isEqualTo("ALI");
+
+    // A 403 from /users/me refuses the person's token, not the tenant's credential.
+    MYID.stubFor(
+        get("/api/v1/users/me")
+            .withHeader("Authorization", equalTo("Bearer person-token"))
+            .willReturn(aResponse().withStatus(403).withBody("{\"detail\":\"expired\"}")));
+    assertProblem(
+        () -> adapter.refreshUserData(TENANT, new RefreshUserDataRequest("refresh-1")),
+        502,
+        "MYID_ADAPTER_MYID_CLIENT_ERROR");
+  }
+
+  @Test
   void aWebSessionsJobsAndABnplValidation() {
     MYID.stubFor(
         post("/api/v1/oauth2/access-token")
@@ -529,7 +653,11 @@ class MyidAdapterIT {
     MYID.stubFor(
         post("/api/v1/bnpl/verify")
             .withHeader("Authorization", absent())
-            .withRequestBody(containing("bnpl_id=b-1"))
+            .withHeader("Content-Type", containing("application/json"))
+            .withRequestBody(
+                equalToJson(
+                    "{\"job_id\":\"j-1\",\"bank_id\":\"bank-1\",\"bnpl_id\":\"b-1\","
+                        + "\"pinfl\":\"30101003300128\"}"))
             .willReturn(
                 okJson("{\"job_id\":\"j-1\",\"bnpl_id\":\"b-1\",\"status\":2,\"result\":false}")));
 
@@ -596,13 +724,16 @@ class MyidAdapterIT {
         .isTrue();
   }
 
-  static void assertProblem(Runnable call, int status, String code) {
+  static RestClientResponseException assertProblem(Runnable call, int status, String code) {
+    var problem = new RestClientResponseException[1];
     assertThatThrownBy(call::run)
         .isInstanceOfSatisfying(
             RestClientResponseException.class,
             e -> {
               assertThat(e.getStatusCode().value()).isEqualTo(status);
               assertThat(e.getResponseBodyAsString()).contains("\"code\":\"" + code + "\"");
+              problem[0] = e;
             });
+    return problem[0];
   }
 }

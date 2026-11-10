@@ -38,7 +38,8 @@ No value has a default: a missing one stops startup.
 | Variable | What |
 |---|---|
 | `MYID_BASE_URL`, `MYID_MEDIA_URL` | MyID's host and its media host (Inplace photos) |
-| `MYID_CONNECT_TIMEOUT`, `MYID_READ_TIMEOUT` | e.g. `2s`, `35s` (MyID answers a result in up to 30 s) |
+| `MYID_CONNECT_TIMEOUT`, `MYID_READ_TIMEOUT` | e.g. `2s`, `7s`: MyID answers most calls in 5 s |
+| `MYID_LONG_READ_TIMEOUT` | e.g. `35s`: the wait for `/users/me`, the Inplace job result and the two compare results, which MyID answers in up to 30 s |
 | `MYID_BREAKER_FAILURES`, `MYID_BREAKER_PROBE_AFTER` | the MyID breaker (SAD §8: `5`, `30s`) |
 | `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_USERNAME`, `VALKEY_PASSWORD` | Valkey and the adapter's ACL user |
 | `MYID_ADAPTER_TOKEN_KEY` | AES-256 key, 32 bytes in base64: the MyID tokens in Valkey are encrypted with it (SAD TB-5) |

@@ -29,6 +29,31 @@ class MyidMappingTest {
     assertThat(MyidJson.imageIssue(29)).isEqualTo(ImageIssue.ARTIFACT_OR_REFLECTION);
     assertThat(MyidJson.imageIssue(31)).isEqualTo(ImageIssue.OTHER);
     assertThat(MyidJson.imageIssue(3)).isNull();
+    assertThat(MyidJson.reasonKey(33)).isEqualTo(ReasonKey.POOR_IMAGE);
+    assertThat(MyidJson.imageIssue(33)).isEqualTo(ImageIssue.OTHER);
+  }
+
+  @Test
+  void aPngIsKnownByItsWholeSignature() {
+    var png = new byte[] {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0};
+    assertThat(MyidJson.isPng(png)).isTrue();
+    assertThat(MyidJson.dataUri(png)).startsWith("data:image/png;base64,");
+    var notPng = new byte[] {(byte) 0x89, 'P', 'N', 'G', 1, 2, 3, 4, 5};
+    assertThat(MyidJson.isPng(notPng)).isFalse();
+    assertThat(MyidJson.dataUri(notPng)).startsWith("data:image/jpeg;base64,");
+  }
+
+  @Test
+  void anAnswerOfAnotherShapeIsAClientErrorWithTheRequestId() {
+    var answer = new Answer(MAPPER.readTree("\"html\""), "r-9", 200);
+    assertThatThrownBy(() -> MyidJson.parse(answer, b -> b.required("status").asString()))
+        .isInstanceOfSatisfying(
+            GeneralException.class,
+            e -> {
+              assertThat(e.getStatus().getType()).isEqualTo("MYID_ADAPTER_MYID_CLIENT_ERROR");
+              assertThat(e.getSubErrors().get(1).code()).isEqualTo("X-Request-ID");
+              assertThat(e.getSubErrors().get(1).message()).isEqualTo("r-9");
+            });
   }
 
   @Test
@@ -38,6 +63,8 @@ class MyidMappingTest {
     assertThat(code(404, false)).isEqualTo("MYID_ADAPTER_NOT_FOUND");
     assertThat(code(400, false)).isEqualTo("MYID_ADAPTER_MYID_CLIENT_ERROR");
     assertThat(code(403, true)).isEqualTo("MYID_ADAPTER_UNAUTHORIZED");
+    assertThat(code(422, true)).isEqualTo("MYID_ADAPTER_MYID_CLIENT_ERROR");
+    assertThat(code(422, false)).isEqualTo("MYID_ADAPTER_MYID_CLIENT_ERROR");
     assertThat(code(429, true)).isEqualTo("MYID_ADAPTER_USER_BLOCKED");
     assertThat(code(503, false)).isEqualTo("MYID_ADAPTER_SERVICE_UNAVAILABLE");
   }

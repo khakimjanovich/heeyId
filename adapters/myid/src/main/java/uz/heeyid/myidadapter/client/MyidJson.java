@@ -1,9 +1,14 @@
 package uz.heeyid.myidadapter.client;
 
+import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADAPTER_MYID_CLIENT_ERROR;
+
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -13,6 +18,7 @@ import tools.jackson.databind.node.ObjectNode;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ImageIssue;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ReasonKey;
 import uz.khakimjanovich.contracts.myidadapter.api.model.VerificationStatus;
+import uz.khakimjanovich.platform.error.GeneralException;
 
 /**
  * MyID's JSON as the contract's models. The contract keeps MyID's field names in camelCase, so a
@@ -23,11 +29,12 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.VerificationStatus;
 public class MyidJson {
 
   private static final Set<Integer> POOR_IMAGE =
-      Set.of(14, 17, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32);
+      Set.of(14, 17, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33);
   private static final Set<Integer> SERVICE_UNAVAILABLE =
-      Set.of(5, 11, 12, 13, 15, 16, 18, 19, 33, 38, 101, 103);
+      Set.of(5, 11, 12, 13, 15, 16, 18, 19, 38, 101, 103);
 
   private static final String JOB_ID = "job_id";
+  private static final byte[] PNG = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'};
 
   private final ObjectMapper mapper;
 
@@ -38,6 +45,21 @@ public class MyidJson {
   /** A MyID object as a contract model. */
   public <T> T read(JsonNode node, Class<T> type) {
     return mapper.treeToValue(camel(node), type);
+  }
+
+  /**
+   * MyID's 2xx answer read by {@code reader}. The answer is outside the adapter's control: one that
+   * is not of the shape MyID documents is MYID_CLIENT_ERROR with its X-Request-ID, not a 500.
+   */
+  public static <T> T parse(MyidClient.Answer answer, Function<JsonNode, T> reader) {
+    try {
+      return Objects.requireNonNull(reader.apply(answer.body()));
+    } catch (GeneralException e) {
+      throw e;
+    } catch (RuntimeException e) {
+      throw MyidClient.refusal(MYID_ADAPTER_MYID_CLIENT_ERROR, answer)
+          .subError("answer", "not of the documented shape: " + e.getClass().getSimpleName());
+    }
   }
 
   /** A request body from name, value pairs, MyID's names; a null value is left out. */
@@ -126,11 +148,15 @@ public class MyidJson {
 
   /** A data URI of a photo (MyID's compare API takes them so): png or jpeg by its first bytes. */
   public static String dataUri(byte[] photo) {
-    var png = photo.length > 3 && photo[0] == (byte) 0x89 && photo[1] == 'P';
     return "data:image/"
-        + (png ? "png" : "jpeg")
+        + (isPng(photo) ? "png" : "jpeg")
         + ";base64,"
         + Base64.getEncoder().encodeToString(photo);
+  }
+
+  /** A PNG by its 8-byte signature; MyID takes png or jpeg, so anything else is sent as jpeg. */
+  public static boolean isPng(byte[] photo) {
+    return photo.length >= PNG.length && Arrays.equals(photo, 0, PNG.length, PNG, 0, PNG.length);
   }
 
   static JsonNode camel(JsonNode node) {
