@@ -5,6 +5,7 @@ import static uz.heeyid.tafadapter.utils.ConstantUtils.TOKEN_IV_BYTES;
 import static uz.heeyid.tafadapter.utils.ConstantUtils.TOKEN_KEY;
 import static uz.heeyid.tafadapter.utils.ConstantUtils.TOKEN_RENEW_BEFORE;
 import static uz.heeyid.tafadapter.utils.ConstantUtils.TOKEN_TAG_BITS;
+import static uz.khakimjanovich.platform.error.ErrorExceptionStatus.INTERNAL_ERROR;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +24,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import uz.heeyid.tafadapter.property.TafProperties;
+import uz.khakimjanovich.platform.error.GeneralException;
 
 /**
  * The adapter's TAF access token in Valkey (SAD §8), shared by every adapter instance. SAD TB-5: a
@@ -81,7 +83,9 @@ public class TafTokens {
           .encodeToString(
               ByteBuffer.allocate(iv.length + sealed.length).put(iv).put(sealed).array());
     } catch (GeneralSecurityException e) {
-      throw new IllegalStateException("cannot encrypt a TAF token", e);
+      // A cipher of the JDK that fails: it cannot happen with a 32-byte key.
+      throw new GeneralException(INTERNAL_ERROR)
+          .subError("cannot encrypt a TAF token", e.toString());
     }
   }
 
@@ -100,7 +104,9 @@ public class TafTokens {
       log.warn("TAF token in Valkey not readable with the current token key | key: {}", name);
       return null;
     } catch (GeneralSecurityException e) {
-      throw new IllegalStateException("cannot decrypt a TAF token", e);
+      // A cipher of the JDK that fails: it cannot happen with a 32-byte key.
+      throw new GeneralException(INTERNAL_ERROR)
+          .subError("cannot decrypt a TAF token", e.toString());
     }
   }
 }
