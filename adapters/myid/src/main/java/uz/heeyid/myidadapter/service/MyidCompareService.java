@@ -4,11 +4,14 @@ import static uz.heeyid.myidadapter.utils.MyidPhotoUtils.dataUri;
 import static uz.heeyid.myidadapter.utils.MyidRequestUtils.invalid;
 
 import java.util.Optional;
+import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
+import uz.heeyid.myidadapter.client.MyidCompareHttpClient;
+import uz.heeyid.myidadapter.client.MyidLongHttpClient;
 import uz.heeyid.myidadapter.mapper.MyidCompareMapper;
 import uz.heeyid.myidadapter.model.request.MyidCompareByExternalIdRequest;
 import uz.heeyid.myidadapter.model.request.MyidCompareTaskRequest;
@@ -26,6 +29,8 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.JobResult;
 public class MyidCompareService {
 
   private final MyidClient myid;
+  private final MyidCompareHttpClient compareHttp;
+  private final MyidLongHttpClient longHttp;
   private final MyidCompareMapper mapper;
 
   public JobResult createCompareTask(String tenant, CreateCompareTaskRequest request) {
@@ -54,43 +59,28 @@ public class MyidCompareService {
             .passData(request.getPassData())
             .phone(request.getPhone())
             .build();
-    var answer =
-        myid.withToken(
-            tenant,
-            Grant.PASSWORD,
-            c ->
-                c.post()
-                    .uri("/api/v1/authentication/compare-photos-task")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(task));
+    var answer = myid.withToken(tenant, Grant.PASSWORD, auth -> compareHttp.createTask(auth, task));
     return mapper.job(answer);
   }
 
   /** Empty while MyID still processes the task (its 202). */
   public Optional<CompareResultResult> getCompareResult(
       String tenant, CompareResultRequest request) {
-    return compareResult(
-        tenant,
-        "/api/v1/authentication/compare-photos-status",
-        new MyidJobIdRequest(request.getJobId()));
+    var query = new MyidJobIdRequest(request.getJobId());
+    return compareResult(tenant, auth -> longHttp.compareResult(auth, query));
   }
 
   /** Empty while MyID still processes the task (its 202). */
   public Optional<CompareResultResult> getCompareResultByExternalId(
       String tenant, CompareResultByExternalIdRequest request) {
-    return compareResult(
-        tenant,
-        "/api/v1/authentication/compare-photos-status-by-external",
-        new MyidCompareByExternalIdRequest(
-            request.getExternalId(), myid.tenant(tenant).clientId()));
+    var query =
+        new MyidCompareByExternalIdRequest(request.getExternalId(), myid.tenant(tenant).clientId());
+    return compareResult(tenant, auth -> longHttp.compareResultByExternalId(auth, query));
   }
 
-  private Optional<CompareResultResult> compareResult(String tenant, String path, Object query) {
-    var answer =
-        myid.withTokenLong(
-            tenant,
-            Grant.PASSWORD,
-            c -> c.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(query));
+  private Optional<CompareResultResult> compareResult(
+      String tenant, Function<String, ResponseEntity<byte[]>> call) {
+    var answer = myid.withToken(tenant, Grant.PASSWORD, call);
     return mapper.result(answer);
   }
 }

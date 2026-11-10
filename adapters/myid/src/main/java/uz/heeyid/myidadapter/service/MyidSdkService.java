@@ -5,10 +5,10 @@ import static uz.heeyid.myidadapter.utils.MyidRequestUtils.text;
 
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
+import uz.heeyid.myidadapter.client.MyidSdkHttpClient;
 import uz.heeyid.myidadapter.mapper.MyidSdkMapper;
 import uz.heeyid.myidadapter.model.request.MyidJobIdRequest;
 import uz.heeyid.myidadapter.model.request.MyidSdkSessionRequest;
@@ -27,6 +27,7 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.SessionStatusResult;
 public class MyidSdkService {
 
   private final MyidClient myid;
+  private final MyidSdkHttpClient sdkHttp;
   private final MyidSdkMapper mapper;
 
   public OpenSessionResult openFullProofingSession(
@@ -60,32 +61,18 @@ public class MyidSdkService {
   }
 
   private OpenSessionResult openSdkSession(String tenant, MyidSdkSessionRequest session) {
-    var answer =
-        myid.withToken(
-            tenant,
-            Grant.CLIENT,
-            c ->
-                c.post()
-                    .uri("/api/v2/sdk/sessions")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(session));
+    var answer = myid.withToken(tenant, Grant.CLIENT, auth -> sdkHttp.openSession(auth, session));
     return mapper.session(answer);
   }
 
   public ProofingResultResult getResult(String tenant, GetResultRequest request) {
     var answer =
-        myid.withToken(
-            tenant,
-            Grant.CLIENT,
-            true,
-            c -> c.get().uri("/api/v1/sdk/data?code={code}", request.getCode()));
+        myid.withToken(tenant, Grant.CLIENT, true, auth -> sdkHttp.data(auth, request.getCode()));
     return mapper.result(answer);
   }
 
   public SessionStatusResult getSessionStatus(String tenant, UUID sessionId) {
-    var answer =
-        myid.withToken(
-            tenant, Grant.CLIENT, c -> c.get().uri("/api/v1/sdk/sessions/{id}", sessionId));
+    var answer = myid.withToken(tenant, Grant.CLIENT, auth -> sdkHttp.session(auth, sessionId));
     return mapper.sessionStatus(answer);
   }
 
@@ -94,11 +81,7 @@ public class MyidSdkService {
         myid.withToken(
             tenant,
             Grant.CLIENT,
-            c ->
-                c.post()
-                    .uri("/api/v1/profile/address")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(new MyidJobIdRequest(request.getJobId().toString())));
+            auth -> sdkHttp.address(auth, new MyidJobIdRequest(request.getJobId().toString())));
     return mapper.address(answer);
   }
 }

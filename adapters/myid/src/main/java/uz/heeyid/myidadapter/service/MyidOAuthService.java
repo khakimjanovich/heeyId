@@ -10,11 +10,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriComponentsBuilder;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Answer;
+import uz.heeyid.myidadapter.client.MyidTokenHttpClient;
 import uz.heeyid.myidadapter.mapper.MyidOAuthMapper;
 import uz.heeyid.myidadapter.model.request.MyidRefreshTokenRequest;
 import uz.heeyid.myidadapter.property.MyidProperties;
@@ -32,6 +32,7 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.UserDataResult;
 public class MyidOAuthService {
 
   private final MyidClient myid;
+  private final MyidTokenHttpClient tokenHttp;
   private final MyidOAuthMapper mapper;
   private final MyidProperties properties;
 
@@ -85,26 +86,23 @@ public class MyidOAuthService {
     var token =
         myid.plain(
             true,
-            c ->
-                c.post()
-                    .uri("/api/v1/oauth2/access-token")
-                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                    .body(
-                        form(
-                            "grant_type",
-                            "authorization_code",
-                            "code",
-                            request.getCode(),
-                            "client_id",
-                            credential.clientId(),
-                            "client_secret",
-                            credential.clientSecret(),
-                            "method",
-                            request.getMethod() == null ? null : request.getMethod().getValue(),
-                            "scope",
-                            request.getScope() == null || request.getScope().isEmpty()
-                                ? null
-                                : scope(request.getScope()))));
+            () ->
+                tokenHttp.oauthToken(
+                    form(
+                        "grant_type",
+                        "authorization_code",
+                        "code",
+                        request.getCode(),
+                        "client_id",
+                        credential.clientId(),
+                        "client_secret",
+                        credential.clientSecret(),
+                        "method",
+                        request.getMethod() == null ? null : request.getMethod().getValue(),
+                        "scope",
+                        request.getScope() == null || request.getScope().isEmpty()
+                            ? null
+                            : scope(request.getScope()))));
     return userData(token);
   }
 
@@ -113,13 +111,9 @@ public class MyidOAuthService {
     var token =
         myid.plain(
             true,
-            c ->
-                c.post()
-                    .uri("/api/v1/oauth2/refresh-token")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(
-                        new MyidRefreshTokenRequest(
-                            request.getRefreshToken(), credential.clientId())));
+            () ->
+                tokenHttp.refreshToken(
+                    new MyidRefreshTokenRequest(request.getRefreshToken(), credential.clientId())));
     return userData(token);
   }
 

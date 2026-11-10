@@ -2,10 +2,10 @@ package uz.heeyid.myidadapter.service;
 
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
+import uz.heeyid.myidadapter.client.MyidWebHttpClient;
 import uz.heeyid.myidadapter.mapper.MyidWebMapper;
 import uz.heeyid.myidadapter.model.request.MyidCloseWebSessionRequest;
 import uz.heeyid.myidadapter.model.request.MyidWebSessionRequest;
@@ -21,6 +21,7 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.WebSessionResultResult;
 public class MyidWebService {
 
   private final MyidClient myid;
+  private final MyidWebHttpClient webHttp;
   private final MyidWebMapper mapper;
 
   public OpenSessionResult openWebSession(String tenant, OpenWebSessionRequest request) {
@@ -28,15 +29,13 @@ public class MyidWebService {
         myid.withToken(
             tenant,
             Grant.CLIENT_CREDENTIALS,
-            c ->
-                c.post()
-                    .uri("/api/v1/web/sessions")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(
-                        new MyidWebSessionRequest(
-                            request.getMaxRetries(),
-                            request.getExternalId().toString(),
-                            request.getIpAddress())));
+            auth ->
+                webHttp.openSession(
+                    auth,
+                    new MyidWebSessionRequest(
+                        request.getMaxRetries(),
+                        request.getExternalId().toString(),
+                        request.getIpAddress())));
     return mapper.session(answer);
   }
 
@@ -46,20 +45,14 @@ public class MyidWebService {
         myid.withToken(
             tenant,
             Grant.CLIENT_CREDENTIALS,
-            c ->
-                c.post()
-                    .uri("/api/v1/web/sessions/{id}/client/close", sessionId)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(new MyidCloseWebSessionRequest(request.getCode())));
+            auth ->
+                webHttp.close(auth, sessionId, new MyidCloseWebSessionRequest(request.getCode())));
     return mapper.closed(answer);
   }
 
   public WebSessionResultResult getWebSessionResult(String tenant, UUID sessionId) {
     var answer =
-        myid.withToken(
-            tenant,
-            Grant.CLIENT_CREDENTIALS,
-            c -> c.post().uri("/api/v1/web/sessions/{id}/result", sessionId));
+        myid.withToken(tenant, Grant.CLIENT_CREDENTIALS, auth -> webHttp.result(auth, sessionId));
     return mapper.result(answer);
   }
 }

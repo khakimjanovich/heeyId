@@ -8,11 +8,12 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
+import uz.heeyid.myidadapter.client.MyidInplaceHttpClient;
+import uz.heeyid.myidadapter.client.MyidLongHttpClient;
+import uz.heeyid.myidadapter.client.MyidMediaHttpClient;
 import uz.heeyid.myidadapter.mapper.MyidInplaceMapper;
 import uz.heeyid.myidadapter.model.request.MyidInplaceJobRequest;
 import uz.heeyid.myidadapter.model.request.MyidInplaceSessionRequest;
@@ -30,6 +31,9 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.UploadInplaceMediaReque
 public class MyidInplaceService {
 
   private final MyidClient myid;
+  private final MyidInplaceHttpClient inplaceHttp;
+  private final MyidMediaHttpClient mediaHttp;
+  private final MyidLongHttpClient longHttp;
   private final MyidInplaceMapper mapper;
 
   public OpenSessionResult openInplaceSession(String tenant, OpenInplaceSessionRequest request) {
@@ -49,32 +53,22 @@ public class MyidInplaceService {
             .reuid(text(request.getReuid()))
             .build();
     var answer =
-        myid.withToken(
-            tenant,
-            Grant.CLIENT,
-            c ->
-                c.post()
-                    .uri("/api/v1/inplace/sessions")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(session));
+        myid.withToken(tenant, Grant.CLIENT, auth -> inplaceHttp.openSession(auth, session));
     return mapper.session(answer);
   }
 
   public InplaceMediaResult uploadInplaceMedia(String tenant, UploadInplaceMediaRequest request) {
     myid.tenant(tenant);
-    var parts = new LinkedMultiValueMap<String, Object>();
-    parts.add("session_id", request.getSessionId().toString());
-    parts.add("photo_front", file(request.getPhotoFront(), "photo_front"));
-    if (request.getPhotoFocus() != null) {
-      parts.add("photo_focus", file(request.getPhotoFocus(), "photo_focus"));
-    }
     var answer =
-        myid.media(
-            c ->
-                c.post()
-                    .uri("/api/v1/inplace/upload")
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(parts));
+        myid.plain(
+            false,
+            () ->
+                mediaHttp.upload(
+                    request.getSessionId().toString(),
+                    file(request.getPhotoFront(), "photo_front"),
+                    request.getPhotoFocus() == null
+                        ? null
+                        : file(request.getPhotoFocus(), "photo_focus")));
     return mapper.media(answer);
   }
 
@@ -83,21 +77,17 @@ public class MyidInplaceService {
         myid.withToken(
             tenant,
             Grant.CLIENT,
-            c ->
-                c.post()
-                    .uri("/api/v1/inplace/jobs")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(
-                        new MyidInplaceJobRequest(
-                            request.getSessionId().toString(), request.getMediaId().toString())));
+            auth ->
+                inplaceHttp.createJob(
+                    auth,
+                    new MyidInplaceJobRequest(
+                        request.getSessionId().toString(), request.getMediaId().toString())));
     return mapper.job(answer);
   }
 
   /** Empty while MyID still processes the job (its 202). */
   public Optional<InplaceJobResultResult> getInplaceJobResult(String tenant, UUID jobId) {
-    var answer =
-        myid.withTokenLong(
-            tenant, Grant.CLIENT, c -> c.get().uri("/api/v1/inplace/jobs/{id}", jobId));
+    var answer = myid.withToken(tenant, Grant.CLIENT, auth -> longHttp.inplaceJob(auth, jobId));
     return mapper.jobResult(answer);
   }
 
