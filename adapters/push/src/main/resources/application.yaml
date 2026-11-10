@@ -1,0 +1,52 @@
+# Callers reach the adapter only over mutual TLS: its certificate, and theirs from a trusted CA.
+# FCM is reached through the egress proxy: set it for the JVM (JAVA_TOOL_OPTIONS with
+# -Dhttps.proxyHost and -Dhttps.proxyPort); the SDK's HTTP client uses the JVM's proxy.
+server:
+  port: ${PUSH_ADAPTER_PORT}
+  ssl:
+    bundle: push-adapter
+    client-auth: need
+
+spring:
+  application:
+    name: push-adapter
+  config:
+    import:
+      - classpath:properties/security.yaml
+      - classpath:properties/push-adapter-exception.yaml
+  ssl:
+    bundle:
+      pem:
+        push-adapter:
+          keystore:
+            certificate: ${PUSH_ADAPTER_SSL_CERTIFICATE}
+            private-key: ${PUSH_ADAPTER_SSL_PRIVATE_KEY}
+          # The CAs whose client certificates are accepted: heeyID's.
+          truststore:
+            certificate: ${PUSH_ADAPTER_SSL_TRUSTED_CAS}
+  # Spring's own error details in the caller's language (Accept-Language).
+  messages:
+    basename: messages/error
+    fallback-to-system-locale: false
+    always-use-message-format: true
+
+# FCM: the bank's Firebase project of this zone, and its service-account credential, a JSON file
+# that the Vault agent writes (SAD §7.2). No other unit holds it.
+fcm:
+  project-id: ${FCM_PROJECT_ID}
+  credentials-file: ${FCM_CREDENTIALS_FILE}
+  connect-timeout: ${FCM_CONNECT_TIMEOUT}
+  read-timeout: ${FCM_READ_TIMEOUT}
+  # SAD C-15: the whole send, the SDK's own retries of a 5xx included (5 s).
+  send-timeout: ${FCM_SEND_TIMEOUT}
+  # SAD §8: open after 5 failures in a row, probe each 30 s.
+  breaker:
+    failures: ${PUSH_BREAKER_FAILURES}
+    probe-after: ${PUSH_BREAKER_PROBE_AFTER}
+
+# Probes reach health on their own port, inside the segment, without a client certificate.
+management:
+  server:
+    port: ${PUSH_ADAPTER_MANAGEMENT_PORT}
+    ssl:
+      enabled: false

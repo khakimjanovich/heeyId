@@ -16,9 +16,10 @@ Reading both from GitHub Packages needs `GH_PACKAGES_ACTOR` and `GH_PACKAGES_TOK
 |---|---|---|
 | `adapters/myid` | MyID's REST API as `myid-adapter-api` (every current MyID flow); callers use `myid-adapter-client` | `./gradlew -p adapters/myid build` |
 | `adapters/sms` | The bank's SMS vendors (SMS Xabar first) as `sms-adapter-api`; callers use `sms-adapter-client` | `./gradlew -p adapters/sms build` |
+| `adapters/push` | Firebase Cloud Messaging (FCM HTTP v1, Firebase Admin SDK) as `push-adapter-api`; callers use `push-adapter-client` | `./gradlew -p adapters/push build` |
 
 Images: `Dockerfile` builds one deployable (`--build-arg SERVICE=adapters/myid`); `.github/workflows/images.yml`
-publishes `ghcr.io/khakimjanovich/myid-adapter` and `ghcr.io/khakimjanovich/sms-adapter` (`main`, `sha-<commit>`, and `X.Y.Z` for a tag `vX.Y.Z`), which
+publishes `ghcr.io/khakimjanovich/myid-adapter`, `ghcr.io/khakimjanovich/sms-adapter` and `ghcr.io/khakimjanovich/push-adapter` (`main`, `sha-<commit>`, and `X.Y.Z` for a tag `vX.Y.Z`), which
 [heeyid-infra](../heeyid-infra) pulls. `.github/workflows/build.yml` runs each adapter's checks.
 
 `build.yml` and `images.yml` run on the owner's self-hosted runner `mac-heeyid` (`~/actions-runners/heeyid`,
@@ -131,3 +132,63 @@ A vendor is one package, `adapters/sms/src/main/java/uz/heeyid/smsadapter/vendor
    already cover it.
 5. Its constants in `utils/<Name>Constants`, a simulator in `SmsAdapterIT` (WireMock), and its
    variables in the table above. `SmsAdapterIT.Backup` shows the smallest vendor bean.
+
+### Push adapter
+
+One port to FCM (SAD v3.9 ADR-36): `POST /v1/messages` sends one message to one device. A push
+carries `data: {type, reference}` only: no code, no text, no personal data (SRS-NTF-04). The app gets
+the text from the customer gateway with the reference (SRS-NTF-05). Android: priority high, `ttl`,
+`collapse_key` = reference. iOS: `apns-collapse-id` = reference, `loc-key` = type (the app's static
+text), `mutable-content` 1 (the app's extension shows the pulled text). A repeat therefore shows once.
+
+The adapter keeps no state and does not retry; the caller acts on the outcome:
+
+| FCM answer | Adapter answer | Caller |
+|---|---|---|
+| a message name | 200 `{messageId}` | done |
+| `UNREGISTERED`, `INVALID_ARGUMENT`, `SENDER_ID_MISMATCH` | `PUSH_ADAPTER_TOKEN_NOT_VALID` (422) | removes the token; no retry |
+| `QUOTA_EXCEEDED` | `PUSH_ADAPTER_RATE_LIMITED` (429), FCM's `Retry-After` | retries after it |
+| `UNAVAILABLE`, `INTERNAL`, `THIRD_PARTY_AUTH_ERROR`, no answer in `FCM_SEND_TIMEOUT`, breaker open | `PUSH_ADAPTER_SERVICE_UNAVAILABLE` (503) | retries with backoff (notifications); signals: the app pulls |
+
+The SDK retries a 5xx by itself and has no switch for it; `FCM_SEND_TIMEOUT` caps the whole send.
+Breaker gauge: `push.fcm.breaker.open`. Logs hold the reference, the type, the outcome and the time,
+never the token. firebase-admin 9.10+ deprecates registration tokens for Firebase Installation IDs;
+FCM's `token` field takes both during its migration, so the adapter sends either as the app
+registered it.
+
+#### FCM credential setup
+
+1. The bank owns one Firebase project for each zone (stage, production) and adds its Android and iOS
+   apps to it. For iOS it uploads its APNs authentication key (Project settings → Cloud Messaging).
+2. In Google Cloud for that project: a service account with only the role **Firebase Cloud
+   Messaging API Admin** (`roles/firebasecloudmessaging.admin`), and one JSON key for it. Enable the
+   Firebase Cloud Messaging API.
+3. The bank's security team puts the JSON into Vault (SAD §7.2), as a secret that only the
+   push adapter's Vault role reads.
+4. The Vault agent of the push adapter writes it as a file (mode 0400) on a memory volume;
+   `FCM_CREDENTIALS_FILE` is that path. No other unit has the file, and it is never in an image,
+   a config file or a log. A file that is missing or not a service-account key stops startup.
+5. The egress proxy lets the adapter reach `fcm.googleapis.com` and `oauth2.googleapis.com` (the
+   key's `token_uri`). Set the JVM's proxy: `JAVA_TOOL_OPTIONS=-Dhttps.proxyHost=<proxy>
+   -Dhttps.proxyPort=<port>`.
+6. Key rotation: add a new key, update Vault, restart the adapter, then delete the old key in Google
+   Cloud.
+
+#### Push adapter settings
+
+No defaults: a missing value stops startup. Defaults live in heeyid-infra (OpenTofu).
+
+| Variable | Value |
+|---|---|
+| `FCM_PROJECT_ID` | the bank's Firebase project of this zone |
+| `FCM_CREDENTIALS_FILE` | the service-account JSON, as the Vault agent writes it |
+| `FCM_CONNECT_TIMEOUT`, `FCM_READ_TIMEOUT` | e.g. `2s`, `5s`: one connection, one answer |
+| `FCM_SEND_TIMEOUT` | the whole send, the SDK's retries included (SAD C-15: `5s`) |
+| `PUSH_BREAKER_FAILURES`, `PUSH_BREAKER_PROBE_AFTER` | the FCM breaker (SAD §8: `5`, `30s`) |
+| `PUSH_ADAPTER_PORT`, `PUSH_ADAPTER_MANAGEMENT_PORT` | the API port (mutual TLS) and the health port |
+| `PUSH_ADAPTER_SSL_CERTIFICATE`, `PUSH_ADAPTER_SSL_PRIVATE_KEY`, `PUSH_ADAPTER_SSL_TRUSTED_CAS` | the adapter's certificate and the CAs of its callers |
+| `PUSH_ADAPTER_ISSUER_URI`, `PUSH_ADAPTER_AUDIENCE` | heeyID's Keycloak and the adapter's audience; callers need the realm role `push.use` |
+| `TRACING_SAMPLING`, `OTLP_*_ENDPOINT` | the platform's observability |
+
+Tests: Firebase has no FCM emulator. `PushAdapterIT` runs the real SDK against WireMock, which
+plays FCM HTTP v1 and Google's token service; only the SDK's connections are pointed at it.
