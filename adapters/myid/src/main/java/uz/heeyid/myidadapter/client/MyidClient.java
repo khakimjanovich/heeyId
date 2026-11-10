@@ -7,35 +7,29 @@ import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADA
 import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADAPTER_UNAUTHORIZED;
 import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADAPTER_USER_BLOCKED;
 
-import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
-import org.springframework.boot.ssl.SslBundles;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.StringNode;
-import uz.heeyid.myidadapter.config.MyidProperties;
-import uz.heeyid.myidadapter.config.MyidProperties.Tenant;
+import uz.heeyid.myidadapter.model.request.MyidClientCredentialsRequest;
+import uz.heeyid.myidadapter.property.MyidProperties;
+import uz.heeyid.myidadapter.property.MyidProperties.Tenant;
 import uz.khakimjanovich.platform.error.ErrorExceptionStatus;
 import uz.khakimjanovich.platform.error.GeneralException;
 import uz.khakimjanovich.platform.error.StatusThrowable;
-import uz.khakimjanovich.platform.observability.HttpClientLogging;
 
 /**
- * MyID over HTTP: the tenant's access token, the call, and MyID's refusals as the contract's
- * errors. No body reaches the log (they hold codes, photos and personal data); the platform's call
- * log keeps the method, the masked URI, the status and the time. The JDK client follows no
- * redirect.
+ * MyID's calls (the @HttpExchange clients beside it, built in MyidHttpClientConfig) with the
+ * tenant's access token, the breaker, and MyID's refusals as the contract's errors.
  */
 @Component
 public class MyidClient {
@@ -55,45 +49,24 @@ public class MyidClient {
 
   private final MyidProperties properties;
   private final ObjectMapper mapper;
-  private final RestClient myid;
-  private final RestClient myidLong;
-  private final RestClient media;
+  private final MyidTokenHttpClient tokenHttp;
+  private final MyidLongHttpClient longHttp;
   private final MyidTokens tokens;
   private final MyidBreaker breaker;
 
   public MyidClient(
       MyidProperties properties,
       ObjectMapper mapper,
-      RestClient.Builder builder,
-      SslBundles sslBundles,
+      MyidTokenHttpClient tokenHttp,
+      MyidLongHttpClient longHttp,
       MyidTokens tokens,
       MyidBreaker breaker) {
     this.properties = properties;
     this.mapper = mapper;
+    this.tokenHttp = tokenHttp;
+    this.longHttp = longHttp;
     this.tokens = tokens;
     this.breaker = breaker;
-    var http =
-        HttpClient.newBuilder()
-            // SAD TB-5: MyID is trusted only through its pinned CA (MYID_TRUSTED_CAS).
-            .sslContext(sslBundles.getBundle("myid").createSslContext())
-            .version(HttpClient.Version.HTTP_1_1)
-            .connectTimeout(properties.connectTimeout())
-            .build();
-    var base = builder.defaultRequest(r -> r.attribute(HttpClientLogging.NO_BODIES, true));
-    var quick = base.clone().requestFactory(waiting(http, properties.readTimeout()));
-    this.myid = quick.clone().baseUrl(properties.baseUrl()).build();
-    this.media = quick.clone().baseUrl(properties.mediaUrl()).build();
-    this.myidLong =
-        base.clone()
-            .requestFactory(waiting(http, properties.longReadTimeout()))
-            .baseUrl(properties.baseUrl())
-            .build();
-  }
-
-  private static JdkClientHttpRequestFactory waiting(HttpClient http, Duration readTimeout) {
-    var requestFactory = new JdkClientHttpRequestFactory(http);
-    requestFactory.setReadTimeout(readTimeout);
-    return requestFactory;
   }
 
   /** The tenant of X-Tenant-Id; an unknown one is the caller's mistake. */
@@ -107,21 +80,12 @@ public class MyidClient {
   }
 
   /**
-   * A call with the tenant's token. MyID refusing the token (403) renews it once; a second 403 is
-   * the contract's UNAUTHORIZED.
+   * A call with the tenant's token: {@code call} gets the Authorization value. MyID refusing the
+   * token (403) renews it once; a second 403 is the contract's UNAUTHORIZED.
    */
   public Answer withToken(
-      String tenantId, Grant grant, Function<RestClient, RestClient.RequestHeadersSpec<?>> call) {
-    return withToken(myid, tenantId, grant, false, call);
-  }
-
-  /**
-   * As {@link #withToken(String, Grant, Function)} for a call that MyID answers in up to 30 s (the
-   * Inplace job result, the compare results): it waits {@code myid.long-read-timeout}.
-   */
-  public Answer withTokenLong(
-      String tenantId, Grant grant, Function<RestClient, RestClient.RequestHeadersSpec<?>> call) {
-    return withToken(myidLong, tenantId, grant, false, call);
+      String tenantId, Grant grant, Function<String, ResponseEntity<byte[]>> call) {
+    return withToken(tenantId, grant, false, call);
   }
 
   /** As {@link #withToken(String, Grant, Function)}; exchange true for a code exchange. */
@@ -129,34 +93,22 @@ public class MyidClient {
       String tenantId,
       Grant grant,
       boolean exchange,
-      Function<RestClient, RestClient.RequestHeadersSpec<?>> call) {
-    return withToken(myid, tenantId, grant, exchange, call);
-  }
-
-  private Answer withToken(
-      RestClient client,
-      String tenantId,
-      Grant grant,
-      boolean exchange,
-      Function<RestClient, RestClient.RequestHeadersSpec<?>> call) {
+      Function<String, ResponseEntity<byte[]>> call) {
     var tenant = tenant(tenantId);
-    var answer =
-        send(call.apply(client).headers(h -> h.setBearerAuth(token(tenantId, tenant, grant))));
+    var answer = send(() -> call.apply(bearer(token(tenantId, tenant, grant))));
     if (answer.status() == 403) {
       tokens.forget(tenantId, grant);
-      answer =
-          send(call.apply(client).headers(h -> h.setBearerAuth(token(tenantId, tenant, grant))));
+      answer = send(() -> call.apply(bearer(token(tenantId, tenant, grant))));
     }
     return checked(answer, exchange);
   }
 
   /**
    * A call without the tenant's token: a code exchange (exchange true: MyID refusing it means the
-   * code is not valid), or the BNPL validation.
+   * code is not valid), the BNPL validation, or the media host.
    */
-  public Answer plain(
-      boolean exchange, Function<RestClient, RestClient.RequestHeadersSpec<?>> call) {
-    return checked(send(call.apply(myid)), exchange);
+  public Answer plain(boolean exchange, Supplier<ResponseEntity<byte[]>> call) {
+    return checked(send(call), exchange);
   }
 
   /**
@@ -164,17 +116,15 @@ public class MyidClient {
    * person's token, not the tenant's credential: MYID_CLIENT_ERROR, not UNAUTHORIZED.
    */
   public Answer me(String accessToken) {
-    var answer =
-        send(myidLong.get().uri("/api/v1/users/me").headers(h -> h.setBearerAuth(accessToken)));
+    var answer = send(() -> longHttp.me(bearer(accessToken)));
     if (answer.status() == 403) {
       throw refusal(MYID_ADAPTER_MYID_CLIENT_ERROR, answer);
     }
     return checked(answer, false);
   }
 
-  /** A call to MyID's media host, which needs no token (the Inplace session id is enough). */
-  public Answer media(Function<RestClient, RestClient.RequestHeadersSpec<?>> call) {
-    return checked(send(call.apply(media)), false);
+  private static String bearer(String token) {
+    return "Bearer " + token;
   }
 
   private String token(String tenantId, Tenant tenant, Grant grant) {
@@ -187,18 +137,13 @@ public class MyidClient {
         send(
             switch (grant) {
               case CLIENT ->
-                  myid.post()
-                      .uri("/api/v1/auth/clients/access-token")
-                      .contentType(MediaType.APPLICATION_JSON)
-                      .body(
-                          Map.of(
-                              "client_id", tenant.clientId(),
-                              "client_secret", tenant.clientSecret()));
+                  () ->
+                      tokenHttp.clientToken(
+                          new MyidClientCredentialsRequest(
+                              tenant.clientId(), tenant.clientSecret()));
               case CLIENT_CREDENTIALS ->
-                  myid.post()
-                      .uri("/api/v1/oauth2/access-token")
-                      .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                      .body(
+                  () ->
+                      tokenHttp.oauthToken(
                           form(
                               "grant_type", "client_credentials",
                               "client_id", tenant.clientId(),
@@ -208,10 +153,8 @@ public class MyidClient {
                   throw new GeneralException(MYID_ADAPTER_UNAUTHORIZED)
                       .subError("credential", "the tenant has no MyID login for this flow");
                 }
-                yield myid.post()
-                    .uri("/api/v1/oauth2/access-token")
-                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                    .body(
+                yield () ->
+                    tokenHttp.oauthToken(
                         form(
                             "grant_type", "password",
                             "username", tenant.username(),
@@ -230,10 +173,10 @@ public class MyidClient {
         Duration.ofSeconds(answer.body().path("expires_in").asLong()));
   }
 
-  private Answer send(RestClient.RequestHeadersSpec<?> request) {
+  private Answer send(Supplier<ResponseEntity<byte[]>> call) {
     breaker.before();
     try {
-      var entity = request.retrieve().onStatus(s -> true, (q, r) -> {}).toEntity(byte[].class);
+      var entity = call.get();
       var status = entity.getStatusCode().value();
       if (status >= 500) {
         breaker.failed();

@@ -1,5 +1,10 @@
 package uz.heeyid.myidadapter.client;
 
+import static uz.heeyid.myidadapter.utils.ConstantUtils.TOKEN_CIPHER;
+import static uz.heeyid.myidadapter.utils.ConstantUtils.TOKEN_IV_BYTES;
+import static uz.heeyid.myidadapter.utils.ConstantUtils.TOKEN_RENEW_BEFORE;
+import static uz.heeyid.myidadapter.utils.ConstantUtils.TOKEN_TAG_BITS;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -18,7 +23,7 @@ import org.jspecify.annotations.Nullable;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
-import uz.heeyid.myidadapter.config.MyidProperties;
+import uz.heeyid.myidadapter.property.MyidProperties;
 
 /**
  * The MyID access tokens of each tenant in Valkey (SAD §8), shared by every adapter instance. SAD
@@ -29,13 +34,6 @@ import uz.heeyid.myidadapter.config.MyidProperties;
 @Slf4j
 @Component
 public class MyidTokens {
-
-  /** A token is renewed this long before MyID's expiry. */
-  static final Duration RENEW_BEFORE = Duration.ofMinutes(5);
-
-  private static final String CIPHER = "AES/GCM/NoPadding";
-  private static final int IV_BYTES = 12;
-  private static final int TAG_BITS = 128;
 
   /** A token as MyID gave it. */
   public record Token(String value, Duration expiresIn) {}
@@ -60,7 +58,7 @@ public class MyidTokens {
       }
     }
     var token = issue.get();
-    var keep = token.expiresIn().minus(RENEW_BEFORE);
+    var keep = token.expiresIn().minus(TOKEN_RENEW_BEFORE);
     if (keep.isPositive()) {
       valkey.opsForValue().set(name, seal(name, token.value()), keep);
     }
@@ -78,10 +76,10 @@ public class MyidTokens {
 
   private String seal(String name, String token) {
     try {
-      var iv = new byte[IV_BYTES];
+      var iv = new byte[TOKEN_IV_BYTES];
       random.nextBytes(iv);
-      var cipher = Cipher.getInstance(CIPHER);
-      cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, iv));
+      var cipher = Cipher.getInstance(TOKEN_CIPHER);
+      cipher.init(Cipher.ENCRYPT_MODE, key, new GCMParameterSpec(TOKEN_TAG_BITS, iv));
       cipher.updateAAD(name.getBytes(StandardCharsets.UTF_8));
       var sealed = cipher.doFinal(token.getBytes(StandardCharsets.UTF_8));
       return Base64.getEncoder()
@@ -96,11 +94,13 @@ public class MyidTokens {
   private @Nullable String open(String name, String stored) {
     try {
       var bytes = Base64.getDecoder().decode(stored);
-      var cipher = Cipher.getInstance(CIPHER);
-      cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, bytes, 0, IV_BYTES));
+      var cipher = Cipher.getInstance(TOKEN_CIPHER);
+      cipher.init(
+          Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TOKEN_TAG_BITS, bytes, 0, TOKEN_IV_BYTES));
       cipher.updateAAD(name.getBytes(StandardCharsets.UTF_8));
       return new String(
-          cipher.doFinal(bytes, IV_BYTES, bytes.length - IV_BYTES), StandardCharsets.UTF_8);
+          cipher.doFinal(bytes, TOKEN_IV_BYTES, bytes.length - TOKEN_IV_BYTES),
+          StandardCharsets.UTF_8);
     } catch (AEADBadTagException | IllegalArgumentException e) {
       log.warn("MyID token in Valkey not readable with the current token key | key: {}", name);
       return null;

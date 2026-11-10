@@ -11,7 +11,7 @@ import java.time.ZoneId;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import uz.heeyid.myidadapter.client.MyidBreaker;
-import uz.heeyid.myidadapter.config.MyidProperties;
+import uz.heeyid.myidadapter.property.MyidProperties;
 import uz.khakimjanovich.platform.error.GeneralException;
 
 /** SAD §8: open after 5 failures in a row, one probe each 30 s. */
