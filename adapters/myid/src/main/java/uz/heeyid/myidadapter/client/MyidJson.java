@@ -20,6 +20,9 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ImageIssue;
+import uz.khakimjanovich.contracts.myidadapter.api.model.Job;
+import uz.khakimjanovich.contracts.myidadapter.api.model.JobResult;
+import uz.khakimjanovich.contracts.myidadapter.api.model.MyidAdapterStatusCode;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ReasonKey;
 import uz.khakimjanovich.contracts.myidadapter.api.model.VerificationStatus;
 import uz.khakimjanovich.platform.error.GeneralException;
@@ -41,6 +44,12 @@ public class MyidJson {
   /** A MyID object as a contract model. */
   public <T> T read(JsonNode node, Class<T> type) {
     return mapper.treeToValue(camel(node), type);
+  }
+
+  /** The envelope of a started job or task: MyID's {@code job_id}. */
+  public JobResult job(MyidClient.Answer answer) {
+    return new JobResult(
+        answer.requestId(), MyidAdapterStatusCode.SUCCESS, parse(answer, b -> read(b, Job.class)));
   }
 
   /**

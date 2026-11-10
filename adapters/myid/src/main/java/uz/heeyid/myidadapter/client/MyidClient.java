@@ -29,7 +29,7 @@ import uz.heeyid.myidadapter.config.MyidProperties.Tenant;
 import uz.khakimjanovich.platform.error.ErrorExceptionStatus;
 import uz.khakimjanovich.platform.error.GeneralException;
 import uz.khakimjanovich.platform.error.StatusThrowable;
-import uz.khakimjanovich.platform.observability.HttpClientLogging;
+import uz.khakimjanovich.platform.observability.ObservabilityConstants;
 
 /**
  * MyID over HTTP: the tenant's access token, the call, and MyID's refusals as the contract's
@@ -79,7 +79,7 @@ public class MyidClient {
             .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(properties.connectTimeout())
             .build();
-    var base = builder.defaultRequest(r -> r.attribute(HttpClientLogging.NO_BODIES, true));
+    var base = builder.defaultRequest(r -> r.attribute(ObservabilityConstants.NO_BODIES, true));
     var quick = base.clone().requestFactory(waiting(http, properties.readTimeout()));
     this.myid = quick.clone().baseUrl(properties.baseUrl()).build();
     this.media = quick.clone().baseUrl(properties.mediaUrl()).build();
