@@ -1,0 +1,61 @@
+# Errors the TAF adapter returns (taf-adapter-api): HTTP status, title and message in English,
+# Russian and Uzbek. TAF's HTTP status, code and message travel in subErrors.
+platform:
+  error:
+    codes:
+      TAF_ADAPTER_CODE_ALREADY_SENT:
+        http-code: 409
+        title: taf-code-already-sent
+        is-loggable: false
+        message-en: "TAF already sent a code to this number."
+        message-ru: "TAF уже отправил код на этот номер."
+        message-uz: "TAF bu raqamga kodni allaqachon yuborgan."
+      TAF_ADAPTER_NUMBER_BLOCKED:
+        http-code: 403
+        title: taf-number-blocked
+        is-loggable: false
+        message-en: "TAF blocked the number for now after wrong codes."
+        message-ru: "TAF временно заблокировал номер после неверных кодов."
+        message-uz: "TAF notoʻgʻri kodlardan keyin raqamni vaqtincha blokladi."
+      TAF_ADAPTER_TRUSTED_BANK_REFUSED:
+        http-code: 403
+        title: taf-trusted-bank-refused
+        is-loggable: false
+        message-en: "The person chose another trusted bank on my.gov.uz. Do not send the code through another channel."
+        message-ru: "Человек выбрал другой доверенный банк на my.gov.uz. Не отправляйте код по другому каналу."
+        message-uz: "Shaxs my.gov.uz'da boshqa ishonchli bankni tanlagan. Kodni boshqa kanal orqali yubormang."
+      TAF_ADAPTER_DEVICE_NOT_SUPPORTED:
+        http-code: 422
+        title: taf-device-not-supported
+        is-loggable: false
+        message-en: "TAF does not support this device."
+        message-ru: "TAF не поддерживает это устройство."
+        message-uz: "TAF bu qurilmani qoʻllab-quvvatlamaydi."
+      TAF_ADAPTER_NOT_FOUND:
+        http-code: 404
+        title: taf-not-found
+        is-loggable: false
+        message-en: "TAF has no such request or account."
+        message-ru: "В TAF нет такого запроса или аккаунта."
+        message-uz: "TAF'da bunday soʻrov yoki hisob yoʻq."
+      TAF_ADAPTER_TAF_CLIENT_ERROR:
+        http-code: 502
+        title: taf-client-error
+        is-loggable: true
+        message-en: "TAF refused the adapter's request."
+        message-ru: "TAF отклонил запрос адаптера."
+        message-uz: "TAF adapter soʻrovini rad etdi."
+      TAF_ADAPTER_UNAUTHORIZED:
+        http-code: 502
+        title: taf-unauthorized
+        is-loggable: true
+        message-en: "TAF did not accept the adapter's credential."
+        message-ru: "TAF не принял учётные данные адаптера."
+        message-uz: "TAF adapter hisob maʼlumotlarini qabul qilmadi."
+      TAF_ADAPTER_SERVICE_UNAVAILABLE:
+        http-code: 503
+        title: taf-service-unavailable
+        is-loggable: true
+        message-en: "TAF is not available now. The outcome is unknown."
+        message-ru: "TAF сейчас недоступен. Результат неизвестен."
+        message-uz: "TAF hozir ishlamayapti. Natija nomaʼlum."

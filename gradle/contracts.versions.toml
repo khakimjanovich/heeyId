@@ -1,7 +1,7 @@
 # The API contracts, published by github.com/khakimjanovich/contracts (read as `contracts`).
 # One version for all of them; moving to a newer release is this one line.
 [versions]
-contracts = "1.5.0"
+contracts = "1.6.0"
 
 [libraries]
 myid-adapter-api = { module = "uz.khakimjanovich.contracts:myid-adapter-api", version.ref = "contracts" }
@@ -10,3 +10,6 @@ myid-adapter-client = { module = "uz.khakimjanovich.contracts:myid-adapter-clien
 sms-adapter-api = { module = "uz.khakimjanovich.contracts:sms-adapter-api", version.ref = "contracts" }
 # The adapter's ready-made client: its client interface as the group sms-adapter.
 sms-adapter-client = { module = "uz.khakimjanovich.contracts:sms-adapter-client", version.ref = "contracts" }
+taf-adapter-api = { module = "uz.khakimjanovich.contracts:taf-adapter-api", version.ref = "contracts" }
+# The adapter's ready-made client: its client interfaces as the group taf-adapter.
+taf-adapter-client = { module = "uz.khakimjanovich.contracts:taf-adapter-client", version.ref = "contracts" }

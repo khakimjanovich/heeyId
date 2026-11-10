@@ -16,9 +16,10 @@ Reading both from GitHub Packages needs `GH_PACKAGES_ACTOR` and `GH_PACKAGES_TOK
 |---|---|---|
 | `adapters/myid` | MyID's REST API as `myid-adapter-api` (every current MyID flow); callers use `myid-adapter-client` | `./gradlew -p adapters/myid build` |
 | `adapters/sms` | The bank's SMS vendors (SMS Xabar first) as `sms-adapter-api`; callers use `sms-adapter-client` | `./gradlew -p adapters/sms build` |
+| `adapters/taf` | The TAF agent's API as `taf-adapter-api` (registration and login: code, verdicts, face confirmation, phone owner, health); callers use `taf-adapter-client` | `./gradlew -p adapters/taf build` |
 
 Images: `Dockerfile` builds one deployable (`--build-arg SERVICE=adapters/myid`); `.github/workflows/images.yml`
-publishes `ghcr.io/khakimjanovich/myid-adapter` and `ghcr.io/khakimjanovich/sms-adapter` (`main`, `sha-<commit>`, and `X.Y.Z` for a tag `vX.Y.Z`), which
+publishes `ghcr.io/khakimjanovich/myid-adapter`, `ghcr.io/khakimjanovich/sms-adapter` and `ghcr.io/khakimjanovich/taf-adapter` (`main`, `sha-<commit>`, and `X.Y.Z` for a tag `vX.Y.Z`), which
 [heeyid-infra](../heeyid-infra) pulls. `.github/workflows/build.yml` runs each adapter's checks.
 
 `build.yml` and `images.yml` run on the owner's self-hosted runner `mac-heeyid` (`~/actions-runners/heeyid`,
@@ -131,3 +132,34 @@ A vendor is one package, `adapters/sms/src/main/java/uz/heeyid/smsadapter/vendor
    already cover it.
 5. Its constants in `utils/<Name>Constants`, a simulator in `SmsAdapterIT` (WireMock), and its
    variables in the table above. `SmsAdapterIT.Backup` shows the smallest vendor bean.
+
+### TAF adapter settings
+
+No value has a default: a missing one stops startup.
+
+| Variable | What |
+|---|---|
+| `TAF_AUTH_URL` | TAF's OAuth 2.0 token endpoint, the full URL |
+| `TAF_AGENT_URL` | the TAF agent in the network of the bank (its API host) |
+| `TAF_HEALTH_URL` | the agent's health, the full URL (port 8081, `/actuator/health`) |
+| `TAF_CONNECT_TIMEOUT`, `TAF_READ_TIMEOUT` | e.g. `2s`, `5s` (SAD C-15: 5 s for each TAF call) |
+| `TAF_BREAKER_FAILURES`, `TAF_BREAKER_PROBE_AFTER` | the TAF breaker (SAD C-15: `5`, `30s`) |
+| `TAF_CLIENT_ID`, `TAF_CLIENT_SECRET`, `TAF_SCOPE` | the adapter's TAF credential (client_credentials), one per installation |
+| `TAF_TRUSTED_CAS` | the CA of the TAF hosts (PEM, or `file:` path): TAF is trusted only through it |
+| `TAF_ADAPTER_TOKEN_KEY` | AES-256 key, 32 bytes in base64: the TAF token in Valkey is encrypted with it |
+| `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_USERNAME`, `VALKEY_PASSWORD` | Valkey and the adapter's ACL user (keys `taf-adapter:*`) |
+| `TAF_ADAPTER_PORT`, `TAF_ADAPTER_MANAGEMENT_PORT` | the API port (mutual TLS) and the health port |
+| `TAF_ADAPTER_SSL_CERTIFICATE`, `TAF_ADAPTER_SSL_PRIVATE_KEY`, `TAF_ADAPTER_SSL_TRUSTED_CAS` | the adapter's certificate and the CAs of its callers |
+| `TAF_ADAPTER_ISSUER_URI`, `TAF_ADAPTER_AUDIENCE` | heeyID's Keycloak and the adapter's audience; callers need the realm role `taf.use` |
+| `TRACING_SAMPLING`, `OTLP_*_ENDPOINT` | the platform's observability |
+
+The TAF token is in Valkey (key `taf-adapter:token`), encrypted with AES-256-GCM, shared by all instances
+and kept until 5 minutes before TAF's expiry (3 h); a token TAF refuses (401) is renewed once. After 5
+failures in a row (no answer in time, or a 5xx) the breaker opens: calls are `TAF_ADAPTER_SERVICE_UNAVAILABLE`
+without a call to TAF, one probe each 30 s, and the gauge `taf.breaker.open` is 1. `GET /v1/health` is
+`DOWN` then, so the gateway sends codes through the bank SMS service. TAF code 39 (`TAF_ADAPTER_TRUSTED_BANK_REFUSED`)
+is not an outage: no other channel may send that code. No request or response body reaches a log.
+
+Not in the adapter: the P2P operation calls (a later phase), and `POST /internal/taf/sms-status`, which the
+TAF agent calls on the customer gateway (SAD §4.14 step 8). The customer texts of TAF's reason codes
+(SRS Appendix C) are the gateway's: `mainReason` comes as TAF sends it.
