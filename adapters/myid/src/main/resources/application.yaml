@@ -12,8 +12,6 @@ spring:
     import:
       - classpath:properties/security.yaml
       - classpath:properties/myid-adapter-exception.yaml
-      # The adapter's MyID credential (myid.credential), a file the deployment renders from Vault.
-      - file:${MYID_ADAPTER_CREDENTIAL_FILE}
   ssl:
     bundle:
       pem:
@@ -49,6 +47,13 @@ myid:
   connect-timeout: ${MYID_CONNECT_TIMEOUT}
   read-timeout: ${MYID_READ_TIMEOUT}
   long-read-timeout: ${MYID_LONG_READ_TIMEOUT}
+  # The adapter's MyID credential, one per installation (SAD v3.2 C-1): the client, and the login of
+  # the Backend API without personal data (the password grant).
+  credential:
+    client-id: ${MYID_CLIENT_ID}
+    client-secret: ${MYID_CLIENT_SECRET}
+    username: ${MYID_USERNAME}
+    password: ${MYID_PASSWORD}
   # SAD TB-5: the AES-256 key (base64, 32 bytes) of the MyID tokens in Valkey.
   token-key: ${MYID_ADAPTER_TOKEN_KEY}
   # SAD §8: open after 5 failures in a row, probe each 30 s.

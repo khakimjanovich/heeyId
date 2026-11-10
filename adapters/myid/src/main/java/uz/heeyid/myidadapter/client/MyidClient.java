@@ -84,10 +84,14 @@ public class MyidClient {
   /** As {@link #withToken(Grant, Function)}; exchange true for a code exchange. */
   public Answer withToken(
       Grant grant, boolean exchange, Function<String, ResponseEntity<byte[]>> call) {
-    var answer = send(() -> call.apply(bearer(token(grant))));
+    // The token first, outside the call's breaker step: getting it is a MyID call of its own
+    // (counted once, in issue), and a refused credential or a Valkey error is no MyID outage.
+    var auth = bearer(token(grant));
+    var answer = send(() -> call.apply(auth));
     if (answer.status() == 403) {
       tokens.forget(grant);
-      answer = send(() -> call.apply(bearer(token(grant))));
+      var renewed = bearer(token(grant));
+      answer = send(() -> call.apply(renewed));
     }
     return checked(answer, exchange);
   }
@@ -137,19 +141,14 @@ public class MyidClient {
                               "grant_type", "client_credentials",
                               "client_id", credential.clientId(),
                               "client_secret", credential.clientSecret()));
-              case PASSWORD -> {
-                if (credential.username() == null || credential.password() == null) {
-                  throw new GeneralException(MYID_ADAPTER_UNAUTHORIZED)
-                      .subError("credential", "the adapter has no MyID login for this flow");
-                }
-                yield () ->
-                    tokenHttp.oauthToken(
-                        form(
-                            "grant_type", "password",
-                            "username", credential.username(),
-                            "password", credential.password(),
-                            "client_id", credential.clientId()));
-              }
+              case PASSWORD ->
+                  () ->
+                      tokenHttp.oauthToken(
+                          form(
+                              "grant_type", "password",
+                              "username", credential.username(),
+                              "password", credential.password(),
+                              "client_id", credential.clientId()));
             });
     if (answer.status() >= 500 || answer.status() == 429 || answer.status() == 422) {
       checked(answer, false);
