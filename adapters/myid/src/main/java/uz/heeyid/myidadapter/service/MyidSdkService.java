@@ -1,36 +1,24 @@
 package uz.heeyid.myidadapter.service;
 
-import static uz.heeyid.myidadapter.client.MyidJson.imageIssue;
-import static uz.heeyid.myidadapter.client.MyidJson.parse;
-import static uz.heeyid.myidadapter.client.MyidJson.reasonKey;
 import static uz.heeyid.myidadapter.utils.MyidRequestUtils.invalid;
 import static uz.heeyid.myidadapter.utils.MyidRequestUtils.text;
-import static uz.khakimjanovich.contracts.myidadapter.api.model.MyidAdapterStatusCode.SUCCESS;
 
-import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import tools.jackson.databind.node.ObjectNode;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
-import uz.heeyid.myidadapter.client.MyidJson;
+import uz.heeyid.myidadapter.mapper.MyidSdkMapper;
 import uz.heeyid.myidadapter.model.request.MyidJobIdRequest;
 import uz.heeyid.myidadapter.model.request.MyidSdkSessionRequest;
-import uz.khakimjanovich.contracts.myidadapter.api.model.Address;
 import uz.khakimjanovich.contracts.myidadapter.api.model.AddressResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.GetAddressRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.GetResultRequest;
-import uz.khakimjanovich.contracts.myidadapter.api.model.JobAddress;
 import uz.khakimjanovich.contracts.myidadapter.api.model.OpenFullProofingSessionRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.OpenReCheckSessionRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.OpenSessionResult;
-import uz.khakimjanovich.contracts.myidadapter.api.model.ProofingResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ProofingResultResult;
-import uz.khakimjanovich.contracts.myidadapter.api.model.Reuid;
-import uz.khakimjanovich.contracts.myidadapter.api.model.Session;
-import uz.khakimjanovich.contracts.myidadapter.api.model.SessionStatus;
 import uz.khakimjanovich.contracts.myidadapter.api.model.SessionStatusResult;
 
 /** Mobile SDK, new flow (docs.myid.uz #/ru/sdknew). */
@@ -39,7 +27,7 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.SessionStatusResult;
 public class MyidSdkService {
 
   private final MyidClient myid;
-  private final MyidJson json;
+  private final MyidSdkMapper mapper;
 
   public OpenSessionResult openFullProofingSession(
       String tenant, OpenFullProofingSessionRequest request) {
@@ -81,8 +69,7 @@ public class MyidSdkService {
                     .uri("/api/v2/sdk/sessions")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(session));
-    return new OpenSessionResult(
-        answer.requestId(), SUCCESS, parse(answer, b -> json.read(b, Session.class)));
+    return mapper.session(answer);
   }
 
   public ProofingResultResult getResult(String tenant, GetResultRequest request) {
@@ -92,40 +79,14 @@ public class MyidSdkService {
             Grant.CLIENT,
             true,
             c -> c.get().uri("/api/v1/sdk/data?code={code}", request.getCode()));
-    var result =
-        parse(
-            answer,
-            b -> {
-              var data = json.read(b.required("data"), ProofingResult.class);
-              var reuid = b.path("reuid");
-              if (data.getReuid() == null && reuid.isObject()) {
-                data.setReuid(json.read(reuid, Reuid.class));
-              }
-              return data;
-            });
-    return new ProofingResultResult(answer.requestId(), SUCCESS, result);
+    return mapper.result(answer);
   }
 
   public SessionStatusResult getSessionStatus(String tenant, UUID sessionId) {
     var answer =
         myid.withToken(
             tenant, Grant.CLIENT, c -> c.get().uri("/api/v1/sdk/sessions/{id}", sessionId));
-    var status =
-        parse(
-            answer,
-            b -> {
-              var body = ((ObjectNode) b).deepCopy();
-              body.put("status", body.required("status").asString().toUpperCase(Locale.ROOT));
-              var read = json.read(body, SessionStatus.class);
-              read.getAttempts()
-                  .forEach(
-                      a ->
-                          a.reasonKey(
-                                  a.getReasonCode() == null ? null : reasonKey(a.getReasonCode()))
-                              .imageIssue(imageIssue(a.getReasonCode())));
-              return read;
-            });
-    return new SessionStatusResult(answer.requestId(), SUCCESS, status);
+    return mapper.sessionStatus(answer);
   }
 
   public AddressResult getAddressByJob(String tenant, GetAddressRequest request) {
@@ -138,13 +99,6 @@ public class MyidSdkService {
                     .uri("/api/v1/profile/address")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(new MyidJobIdRequest(request.getJobId().toString())));
-    var address =
-        parse(
-            answer,
-            b ->
-                new JobAddress(
-                    UUID.fromString(b.required("response_id").asString()),
-                    json.read(b.required("profile").required("address"), Address.class)));
-    return new AddressResult(answer.requestId(), SUCCESS, address);
+    return mapper.address(answer);
   }
 }

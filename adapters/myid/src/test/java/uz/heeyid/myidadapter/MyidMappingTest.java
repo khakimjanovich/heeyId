@@ -7,7 +7,8 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Answer;
-import uz.heeyid.myidadapter.client.MyidJson;
+import uz.heeyid.myidadapter.mapper.MyidJsonMapper;
+import uz.heeyid.myidadapter.utils.MyidPhotoUtils;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ImageIssue;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ReasonKey;
 import uz.khakimjanovich.platform.error.GeneralException;
@@ -19,34 +20,34 @@ class MyidMappingTest {
 
   @Test
   void eachOutcomeCodeHasItsGroup() {
-    assertThat(MyidJson.reasonKey(-1)).isEqualTo(ReasonKey.CONSENT_REFUSED);
-    assertThat(MyidJson.reasonKey(1)).isEqualTo(ReasonKey.PASSED);
-    assertThat(MyidJson.reasonKey(23)).isEqualTo(ReasonKey.POOR_IMAGE);
-    assertThat(MyidJson.reasonKey(38)).isEqualTo(ReasonKey.SERVICE_UNAVAILABLE);
-    assertThat(MyidJson.reasonKey(10)).isEqualTo(ReasonKey.TIMED_OUT);
-    assertThat(MyidJson.reasonKey(122)).isEqualTo(ReasonKey.BLOCKED_BY_PROVIDER);
-    assertThat(MyidJson.reasonKey(999)).isEqualTo(ReasonKey.UNKNOWN);
-    assertThat(MyidJson.imageIssue(29)).isEqualTo(ImageIssue.ARTIFACT_OR_REFLECTION);
-    assertThat(MyidJson.imageIssue(31)).isEqualTo(ImageIssue.OTHER);
-    assertThat(MyidJson.imageIssue(3)).isNull();
-    assertThat(MyidJson.reasonKey(33)).isEqualTo(ReasonKey.POOR_IMAGE);
-    assertThat(MyidJson.imageIssue(33)).isEqualTo(ImageIssue.OTHER);
+    assertThat(MyidJsonMapper.reasonKey(-1)).isEqualTo(ReasonKey.CONSENT_REFUSED);
+    assertThat(MyidJsonMapper.reasonKey(1)).isEqualTo(ReasonKey.PASSED);
+    assertThat(MyidJsonMapper.reasonKey(23)).isEqualTo(ReasonKey.POOR_IMAGE);
+    assertThat(MyidJsonMapper.reasonKey(38)).isEqualTo(ReasonKey.SERVICE_UNAVAILABLE);
+    assertThat(MyidJsonMapper.reasonKey(10)).isEqualTo(ReasonKey.TIMED_OUT);
+    assertThat(MyidJsonMapper.reasonKey(122)).isEqualTo(ReasonKey.BLOCKED_BY_PROVIDER);
+    assertThat(MyidJsonMapper.reasonKey(999)).isEqualTo(ReasonKey.UNKNOWN);
+    assertThat(MyidJsonMapper.imageIssue(29)).isEqualTo(ImageIssue.ARTIFACT_OR_REFLECTION);
+    assertThat(MyidJsonMapper.imageIssue(31)).isEqualTo(ImageIssue.OTHER);
+    assertThat(MyidJsonMapper.imageIssue(3)).isNull();
+    assertThat(MyidJsonMapper.reasonKey(33)).isEqualTo(ReasonKey.POOR_IMAGE);
+    assertThat(MyidJsonMapper.imageIssue(33)).isEqualTo(ImageIssue.OTHER);
   }
 
   @Test
   void aPngIsKnownByItsWholeSignature() {
     var png = new byte[] {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0};
-    assertThat(MyidJson.isPng(png)).isTrue();
-    assertThat(MyidJson.dataUri(png)).startsWith("data:image/png;base64,");
+    assertThat(MyidPhotoUtils.isPng(png)).isTrue();
+    assertThat(MyidPhotoUtils.dataUri(png)).startsWith("data:image/png;base64,");
     var notPng = new byte[] {(byte) 0x89, 'P', 'N', 'G', 1, 2, 3, 4, 5};
-    assertThat(MyidJson.isPng(notPng)).isFalse();
-    assertThat(MyidJson.dataUri(notPng)).startsWith("data:image/jpeg;base64,");
+    assertThat(MyidPhotoUtils.isPng(notPng)).isFalse();
+    assertThat(MyidPhotoUtils.dataUri(notPng)).startsWith("data:image/jpeg;base64,");
   }
 
   @Test
   void anAnswerOfAnotherShapeIsAClientErrorWithTheRequestId() {
     var answer = new Answer(MAPPER.readTree("\"html\""), "r-9", 200);
-    assertThatThrownBy(() -> MyidJson.parse(answer, b -> b.required("status").asString()))
+    assertThatThrownBy(() -> MyidJsonMapper.parse(answer, b -> b.required("status").asString()))
         .isInstanceOfSatisfying(
             GeneralException.class,
             e -> {

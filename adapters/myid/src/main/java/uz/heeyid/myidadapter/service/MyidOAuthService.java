@@ -1,37 +1,30 @@
 package uz.heeyid.myidadapter.service;
 
 import static uz.heeyid.myidadapter.client.MyidClient.form;
-import static uz.heeyid.myidadapter.client.MyidJson.parse;
 import static uz.heeyid.myidadapter.utils.ConstantUtils.QR_EXTRA_KEY;
 import static uz.heeyid.myidadapter.utils.ConstantUtils.QR_EXTRA_VALUE;
 import static uz.heeyid.myidadapter.utils.MyidRequestUtils.invalid;
 import static uz.heeyid.myidadapter.utils.MyidRequestUtils.scope;
-import static uz.heeyid.myidadapter.utils.MyidRequestUtils.stringOrNull;
-import static uz.khakimjanovich.contracts.myidadapter.api.model.MyidAdapterStatusCode.SUCCESS;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriComponentsBuilder;
-import tools.jackson.databind.node.ObjectNode;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Answer;
-import uz.heeyid.myidadapter.client.MyidJson;
+import uz.heeyid.myidadapter.mapper.MyidOAuthMapper;
 import uz.heeyid.myidadapter.model.request.MyidRefreshTokenRequest;
 import uz.heeyid.myidadapter.property.MyidProperties;
-import uz.khakimjanovich.contracts.myidadapter.api.model.AuthorizationUrl;
 import uz.khakimjanovich.contracts.myidadapter.api.model.AuthorizationUrlRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.AuthorizationUrlResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ExchangeAuthorizationCodeRequest;
-import uz.khakimjanovich.contracts.myidadapter.api.model.QrContent;
 import uz.khakimjanovich.contracts.myidadapter.api.model.QrContentRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.QrContentResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.RefreshUserDataRequest;
-import uz.khakimjanovich.contracts.myidadapter.api.model.UserData;
 import uz.khakimjanovich.contracts.myidadapter.api.model.UserDataResult;
-import uz.khakimjanovich.contracts.myidadapter.api.model.UserProfile;
 
 /** Redirect (#/ru/redirect), QR inplace (#/ru/QR_inplace) and the WebSDK code. */
 @Service
@@ -39,7 +32,7 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.UserProfile;
 public class MyidOAuthService {
 
   private final MyidClient myid;
-  private final MyidJson json;
+  private final MyidOAuthMapper mapper;
   private final MyidProperties properties;
 
   public AuthorizationUrlResult getAuthorizationUrl(
@@ -55,7 +48,7 @@ public class MyidOAuthService {
             .queryParam("state", request.getState())
             .encode()
             .toUriString();
-    return new AuthorizationUrlResult("", SUCCESS, new AuthorizationUrl(url));
+    return mapper.authorizationUrl(url);
   }
 
   public QrContentResult getQrContent(String tenant, QrContentRequest request) {
@@ -82,7 +75,8 @@ public class MyidOAuthService {
           }
           qr.queryParam(key, value);
         });
-    return new QrContentResult("", SUCCESS, new QrContent(qr.encode().build().getQuery()));
+    // Never null: client_id and method are always there.
+    return mapper.qrContent(Objects.requireNonNull(qr.encode().build().getQuery()));
   }
 
   public UserDataResult exchangeAuthorizationCode(
@@ -131,21 +125,7 @@ public class MyidOAuthService {
 
   /** The person's data with the person's token of a code or a refresh token. */
   private UserDataResult userData(Answer token) {
-    var accessToken = parse(token, b -> b.required("access_token").asString());
-    var me = myid.me(accessToken);
-    var data =
-        parse(
-            me,
-            b -> {
-              var profile = ((ObjectNode) b.required("profile")).deepCopy();
-              var method = profile.remove("authentication_method");
-              return new UserData()
-                  .jobId(json.jobIdOf(accessToken))
-                  .scope(stringOrNull(token.body().path("scope")))
-                  .authenticationMethod(method == null ? null : stringOrNull(method))
-                  .refreshToken(stringOrNull(token.body().path("refresh_token")))
-                  .profile(json.read(profile, UserProfile.class));
-            });
-    return new UserDataResult(me.requestId(), SUCCESS, data);
+    var accessToken = mapper.accessToken(token);
+    return mapper.userData(token, accessToken, myid.me(accessToken));
   }
 }

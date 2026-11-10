@@ -1,11 +1,7 @@
 package uz.heeyid.myidadapter.service;
 
-import static uz.heeyid.myidadapter.client.MyidJson.dataUri;
-import static uz.heeyid.myidadapter.client.MyidJson.imageIssue;
-import static uz.heeyid.myidadapter.client.MyidJson.parse;
-import static uz.heeyid.myidadapter.client.MyidJson.reasonKey;
+import static uz.heeyid.myidadapter.utils.MyidPhotoUtils.dataUri;
 import static uz.heeyid.myidadapter.utils.MyidRequestUtils.invalid;
-import static uz.khakimjanovich.contracts.myidadapter.api.model.MyidAdapterStatusCode.SUCCESS;
 
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -13,12 +9,11 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import uz.heeyid.myidadapter.client.MyidClient;
 import uz.heeyid.myidadapter.client.MyidClient.Grant;
-import uz.heeyid.myidadapter.client.MyidJson;
+import uz.heeyid.myidadapter.mapper.MyidCompareMapper;
 import uz.heeyid.myidadapter.model.request.MyidCompareByExternalIdRequest;
 import uz.heeyid.myidadapter.model.request.MyidCompareTaskRequest;
 import uz.heeyid.myidadapter.model.request.MyidCompareTaskRequest.PhotoFromCamera;
 import uz.heeyid.myidadapter.model.request.MyidJobIdRequest;
-import uz.khakimjanovich.contracts.myidadapter.api.model.CompareResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.CompareResultByExternalIdRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.CompareResultRequest;
 import uz.khakimjanovich.contracts.myidadapter.api.model.CompareResultResult;
@@ -31,7 +26,7 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.JobResult;
 public class MyidCompareService {
 
   private final MyidClient myid;
-  private final MyidJson json;
+  private final MyidCompareMapper mapper;
 
   public JobResult createCompareTask(String tenant, CreateCompareTaskRequest request) {
     var comparison = Boolean.TRUE.equals(request.getComparison());
@@ -68,7 +63,7 @@ public class MyidCompareService {
                     .uri("/api/v1/authentication/compare-photos-task")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(task));
-    return json.job(answer);
+    return mapper.job(answer);
   }
 
   /** Empty while MyID still processes the task (its 202). */
@@ -96,17 +91,6 @@ public class MyidCompareService {
             tenant,
             Grant.PASSWORD,
             c -> c.post().uri(path).contentType(MediaType.APPLICATION_JSON).body(query));
-    if (answer.status() == 202) {
-      return Optional.empty();
-    }
-    var result =
-        parse(
-            answer,
-            b -> {
-              var read = json.read(b, CompareResult.class);
-              return read.reasonKey(reasonKey(read.getResultCode()))
-                  .imageIssue(imageIssue(read.getResultCode()));
-            });
-    return Optional.of(new CompareResultResult(answer.requestId(), SUCCESS, result));
+    return mapper.result(answer);
   }
 }

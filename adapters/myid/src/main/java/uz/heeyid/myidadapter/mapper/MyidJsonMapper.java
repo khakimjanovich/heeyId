@@ -1,14 +1,11 @@
-package uz.heeyid.myidadapter.client;
+package uz.heeyid.myidadapter.mapper;
 
 import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADAPTER_MYID_CLIENT_ERROR;
-import static uz.heeyid.myidadapter.utils.ConstantUtils.PNG_SIGNATURE_HEX;
 import static uz.heeyid.myidadapter.utils.ConstantUtils.TOKEN_CLAIM_JOB_ID;
 import static uz.heeyid.myidadapter.utils.MyidReasonCodeConstants.MYID_POOR_IMAGE_CODES;
 import static uz.heeyid.myidadapter.utils.MyidReasonCodeConstants.MYID_SERVICE_UNAVAILABLE_CODES;
 
-import java.util.Arrays;
 import java.util.Base64;
-import java.util.HexFormat;
 import java.util.Objects;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -17,11 +14,15 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
+import uz.heeyid.myidadapter.client.MyidClient;
+import uz.heeyid.myidadapter.client.MyidClient.Answer;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ImageIssue;
 import uz.khakimjanovich.contracts.myidadapter.api.model.Job;
 import uz.khakimjanovich.contracts.myidadapter.api.model.JobResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.MyidAdapterStatusCode;
+import uz.khakimjanovich.contracts.myidadapter.api.model.OpenSessionResult;
 import uz.khakimjanovich.contracts.myidadapter.api.model.ReasonKey;
+import uz.khakimjanovich.contracts.myidadapter.api.model.Session;
 import uz.khakimjanovich.contracts.myidadapter.api.model.VerificationStatus;
 import uz.khakimjanovich.platform.error.GeneralException;
 
@@ -31,11 +32,11 @@ import uz.khakimjanovich.platform.error.GeneralException;
  * are ignored.
  */
 @Component
-public class MyidJson {
+public class MyidJsonMapper {
 
   private final ObjectMapper mapper;
 
-  public MyidJson(ObjectMapper mapper) {
+  public MyidJsonMapper(ObjectMapper mapper) {
     this.mapper = mapper;
   }
 
@@ -44,8 +45,21 @@ public class MyidJson {
     return mapper.treeToValue(camel(node), type);
   }
 
+  /** The envelope of an opened session: MyID's {@code session_id}. */
+  public OpenSessionResult session(Answer answer) {
+    return new OpenSessionResult(
+        answer.requestId(),
+        MyidAdapterStatusCode.SUCCESS,
+        parse(answer, b -> read(b, Session.class)));
+  }
+
+  /** A string field, or null when MyID sent none. */
+  public static @Nullable String stringOrNull(JsonNode node) {
+    return node.isString() ? node.asString() : null;
+  }
+
   /** The envelope of a started job or task: MyID's {@code job_id}. */
-  public JobResult job(MyidClient.Answer answer) {
+  public JobResult job(Answer answer) {
     return new JobResult(
         answer.requestId(), MyidAdapterStatusCode.SUCCESS, parse(answer, b -> read(b, Job.class)));
   }
@@ -54,7 +68,7 @@ public class MyidJson {
    * MyID's 2xx answer read by {@code reader}. The answer is outside the adapter's control: one that
    * is not of the shape MyID documents is MYID_CLIENT_ERROR with its X-Request-ID, not a 500.
    */
-  public static <T> T parse(MyidClient.Answer answer, Function<JsonNode, T> reader) {
+  public static <T> T parse(Answer answer, Function<JsonNode, T> reader) {
     try {
       return Objects.requireNonNull(reader.apply(answer.body()));
     } catch (GeneralException e) {
@@ -136,20 +150,6 @@ public class MyidJson {
       case 6 -> VerificationStatus.BNPL_BANK_NOT_FOUND;
       default -> VerificationStatus.UNKNOWN;
     };
-  }
-
-  /** A data URI of a photo (MyID's compare API takes them so): png or jpeg by its first bytes. */
-  public static String dataUri(byte[] photo) {
-    return "data:image/"
-        + (isPng(photo) ? "png" : "jpeg")
-        + ";base64,"
-        + Base64.getEncoder().encodeToString(photo);
-  }
-
-  /** A PNG by its 8-byte signature; MyID takes png or jpeg, so anything else is sent as jpeg. */
-  public static boolean isPng(byte[] photo) {
-    var png = HexFormat.of().parseHex(PNG_SIGNATURE_HEX);
-    return photo.length >= png.length && Arrays.equals(photo, 0, png.length, png, 0, png.length);
   }
 
   static JsonNode camel(JsonNode node) {
