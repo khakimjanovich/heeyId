@@ -24,10 +24,9 @@ public class MyidWebService {
   private final MyidWebHttpClient webHttp;
   private final MyidWebMapper mapper;
 
-  public OpenSessionResult openWebSession(String tenant, OpenWebSessionRequest request) {
+  public OpenSessionResult openWebSession(OpenWebSessionRequest request) {
     var answer =
         myid.withToken(
-            tenant,
             Grant.CLIENT_CREDENTIALS,
             auth ->
                 webHttp.openSession(
@@ -39,20 +38,17 @@ public class MyidWebService {
     return mapper.session(answer);
   }
 
-  public EmptyResult closeWebSession(
-      String tenant, UUID sessionId, CloseWebSessionRequest request) {
+  public EmptyResult closeWebSession(UUID sessionId, CloseWebSessionRequest request) {
     var answer =
         myid.withToken(
-            tenant,
             Grant.CLIENT_CREDENTIALS,
             auth ->
                 webHttp.close(auth, sessionId, new MyidCloseWebSessionRequest(request.getCode())));
     return mapper.closed(answer);
   }
 
-  public WebSessionResultResult getWebSessionResult(String tenant, UUID sessionId) {
-    var answer =
-        myid.withToken(tenant, Grant.CLIENT_CREDENTIALS, auth -> webHttp.result(auth, sessionId));
+  public WebSessionResultResult getWebSessionResult(UUID sessionId) {
+    var answer = myid.withToken(Grant.CLIENT_CREDENTIALS, auth -> webHttp.result(auth, sessionId));
     return mapper.result(answer);
   }
 }

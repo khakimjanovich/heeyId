@@ -26,10 +26,10 @@ import uz.heeyid.myidadapter.client.MyidClient.Grant;
 import uz.heeyid.myidadapter.property.MyidProperties;
 
 /**
- * The MyID access tokens of each tenant in Valkey (SAD §8), shared by every adapter instance. SAD
- * TB-5: a token is in Valkey only encrypted (AES-256-GCM with the adapter's token key, the Valkey
- * key as associated data), and in clear only in the adapter's memory. SAD §6: each key starts with
- * {@code t:<tenant>:}. A token is kept until 5 minutes before MyID's expiry.
+ * The adapter's MyID access tokens in Valkey (SAD §8), shared by every adapter instance. SAD TB-5:
+ * a token is in Valkey only encrypted (AES-256-GCM with the adapter's token key, the Valkey key as
+ * associated data), and in clear only in the adapter's memory. A token is kept until 5 minutes
+ * before MyID's expiry.
  */
 @Slf4j
 @Component
@@ -47,9 +47,9 @@ public class MyidTokens {
     this.key = new SecretKeySpec(Base64.getDecoder().decode(properties.tokenKey()), "AES");
   }
 
-  /** The tenant's token for the grant: from Valkey, or a new one from {@code issue}. */
-  public String get(String tenant, Grant grant, Supplier<Token> issue) {
-    var name = key(tenant, grant);
+  /** The token for the grant: from Valkey, or a new one from {@code issue}. */
+  public String get(Grant grant, Supplier<Token> issue) {
+    var name = key(grant);
     var cached = valkey.opsForValue().get(name);
     if (cached != null) {
       var token = open(name, cached);
@@ -66,12 +66,12 @@ public class MyidTokens {
   }
 
   /** Forgets a token MyID refused. */
-  public void forget(String tenant, Grant grant) {
-    valkey.delete(key(tenant, grant));
+  public void forget(Grant grant) {
+    valkey.delete(key(grant));
   }
 
-  static String key(String tenant, Grant grant) {
-    return "t:" + tenant + ":myid-adapter:token:" + grant.name().toLowerCase(Locale.ROOT);
+  static String key(Grant grant) {
+    return "myid-adapter:token:" + grant.name().toLowerCase(Locale.ROOT);
   }
 
   private String seal(String name, String token) {

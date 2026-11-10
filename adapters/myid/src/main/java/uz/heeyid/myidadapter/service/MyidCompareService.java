@@ -33,7 +33,7 @@ public class MyidCompareService {
   private final MyidLongHttpClient longHttp;
   private final MyidCompareMapper mapper;
 
-  public JobResult createCompareTask(String tenant, CreateCompareTaskRequest request) {
+  public JobResult createCompareTask(CreateCompareTaskRequest request) {
     var comparison = Boolean.TRUE.equals(request.getComparison());
     if (!comparison && !Boolean.TRUE.equals(request.getLiveness())) {
       throw invalid("liveness", "liveness or comparison must be true");
@@ -41,7 +41,7 @@ public class MyidCompareService {
     if (comparison && request.getPhotoFromPassport() == null) {
       throw invalid("photoFromPassport", "required when comparison is true");
     }
-    var clientId = myid.tenant(tenant).clientId();
+    var clientId = myid.credential().clientId();
     var task =
         MyidCompareTaskRequest.builder()
             .photoFromCamera(new PhotoFromCamera(dataUri(request.getPhotoFront())))
@@ -59,28 +59,27 @@ public class MyidCompareService {
             .passData(request.getPassData())
             .phone(request.getPhone())
             .build();
-    var answer = myid.withToken(tenant, Grant.PASSWORD, auth -> compareHttp.createTask(auth, task));
+    var answer = myid.withToken(Grant.PASSWORD, auth -> compareHttp.createTask(auth, task));
     return mapper.job(answer);
   }
 
   /** Empty while MyID still processes the task (its 202). */
-  public Optional<CompareResultResult> getCompareResult(
-      String tenant, CompareResultRequest request) {
+  public Optional<CompareResultResult> getCompareResult(CompareResultRequest request) {
     var query = new MyidJobIdRequest(request.getJobId());
-    return compareResult(tenant, auth -> longHttp.compareResult(auth, query));
+    return compareResult(auth -> longHttp.compareResult(auth, query));
   }
 
   /** Empty while MyID still processes the task (its 202). */
   public Optional<CompareResultResult> getCompareResultByExternalId(
-      String tenant, CompareResultByExternalIdRequest request) {
+      CompareResultByExternalIdRequest request) {
     var query =
-        new MyidCompareByExternalIdRequest(request.getExternalId(), myid.tenant(tenant).clientId());
-    return compareResult(tenant, auth -> longHttp.compareResultByExternalId(auth, query));
+        new MyidCompareByExternalIdRequest(request.getExternalId(), myid.credential().clientId());
+    return compareResult(auth -> longHttp.compareResultByExternalId(auth, query));
   }
 
   private Optional<CompareResultResult> compareResult(
-      String tenant, Function<String, ResponseEntity<byte[]>> call) {
-    var answer = myid.withToken(tenant, Grant.PASSWORD, call);
+      Function<String, ResponseEntity<byte[]>> call) {
+    var answer = myid.withToken(Grant.PASSWORD, call);
     return mapper.result(answer);
   }
 }

@@ -85,7 +85,6 @@ import uz.khakimjanovich.contracts.myidadapter.api.model.WebJob;
     properties = "MYID_ADAPTER_MANAGEMENT_PORT=0")
 class MyidAdapterIT {
 
-  static final String TENANT = "tenant-one";
   static final UUID SESSION = UUID.fromString("c328025e-e00c-4720-aad0-0c8cd9722bec");
   static final UUID JOB = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
 
@@ -102,7 +101,7 @@ class MyidAdapterIT {
 
   /**
    * Valkey with heeyid-infra's ACL (valkey/start.sh): the adapter's user reaches only keys
-   * t:*:myid-adapter:* and only the commands it sends. The user it-admin reads and clears for the
+   * myid-adapter:* and only the commands it sends. The user it-admin reads and clears for the
    * tests.
    */
   static final GenericContainer<?> VALKEY =
@@ -117,7 +116,7 @@ class MyidAdapterIT {
               "on",
               ">valkey-it",
               "resetkeys",
-              "~t:*:myid-adapter:*",
+              "~myid-adapter:*",
               "resetchannels",
               "-@all",
               "+get",
@@ -139,24 +138,20 @@ class MyidAdapterIT {
     MYID.start();
     FALSE_MYID.start();
     VALKEY.start();
-    // Spring imports the tenants file before dynamic properties exist: a system property it is.
+    // Spring imports the credential file before dynamic properties exist: a system property it is.
     try {
-      var tenants =
+      var credential =
           Files.writeString(
-              Callers.directory().resolve("tenants.yaml"),
+              Callers.directory().resolve("credential.yaml"),
               """
               myid:
-                tenants:
-                  tenant-one:
-                    client-id: client-one
-                    client-secret: secret-one
-                    username: login-one
-                    password: password-one
-                  tenant-two:
-                    client-id: client-two
-                    client-secret: secret-two
+                credential:
+                  client-id: client-one
+                  client-secret: secret-one
+                  username: login-one
+                  password: password-one
               """);
-      System.setProperty("MYID_ADAPTER_TENANTS_FILE", tenants.toString());
+      System.setProperty("MYID_ADAPTER_CREDENTIAL_FILE", credential.toString());
     } catch (IOException e) {
       throw new IllegalStateException(e);
     }
@@ -273,7 +268,6 @@ class MyidAdapterIT {
     var session =
         adapter
             .openFullProofingSession(
-                TENANT,
                 new OpenFullProofingSessionRequest(0.9)
                     .passData("AA1234567")
                     .birthDate(LocalDate.of(1990, 5, 15)))
@@ -281,7 +275,7 @@ class MyidAdapterIT {
     assertThat(session.getRequestId()).isEqualTo("r-1");
     assertThat(session.getData().getSessionId()).isEqualTo(SESSION);
 
-    var result = adapter.getResult(TENANT, new GetResultRequest("one-time")).getBody().getData();
+    var result = adapter.getResult(new GetResultRequest("one-time")).getBody().getData();
     assertThat(result.getComparisonValue()).isEqualTo(0.92);
     assertThat(result.getJobId()).isEqualTo(JOB);
     assertThat(result.getProfile().getCommonData().getFirstName()).isEqualTo("ALI");
@@ -289,13 +283,13 @@ class MyidAdapterIT {
     assertThat(result.getProfile().getContacts().getPhone()).isEqualTo("998901234567");
     assertThat(result.getProfile().getAddress().getPermanentAddress()).isEqualTo("Tashkent");
     assertThat(result.getReuid().getExpiresAt()).isEqualTo(1722412345L);
-    // One token for both calls, in Valkey under the tenant's prefix until 5 min before expiry,
+    // One token for both calls, in Valkey until 5 min before expiry,
     // encrypted (SAD TB-5).
     MYID.verify(1, postRequestedFor(urlPathEqualTo("/api/v1/auth/clients/access-token")));
-    var stored = valkey.opsForValue().get("t:tenant-one:myid-adapter:token:client");
+    var stored = valkey.opsForValue().get("myid-adapter:token:client");
     assertThat(stored).isNotNull().doesNotContain("sdk-token");
     assertThat(new String(Base64.getDecoder().decode(stored))).doesNotContain("sdk-token");
-    assertThat(valkey.getExpire("t:tenant-one:myid-adapter:token:client")).isBetween(3200L, 3300L);
+    assertThat(valkey.getExpire("myid-adapter:token:client")).isBetween(3200L, 3300L);
   }
 
   @Test
@@ -321,14 +315,14 @@ class MyidAdapterIT {
                         + "\",\"profile\":{\"address\":"
                         + "{\"permanent_address\":\"Tashkent\"}}}")));
 
-    var status = adapter.getSessionStatus(TENANT, SESSION).getBody().getData();
+    var status = adapter.getSessionStatus(SESSION).getBody().getData();
     assertThat(status.getStatus()).isEqualTo(SessionState.CLOSED);
     assertThat(status.getCode()).isNull();
     assertThat(status.getAttempts().get(0).getReasonKey()).isEqualTo(ReasonKey.POOR_IMAGE);
     assertThat(status.getAttempts().get(0).getImageIssue()).isEqualTo(ImageIssue.GRAYSCALE);
     assertThat(status.getAttempts().get(1).getReasonKey()).isNull();
 
-    var address = adapter.getAddressByJob(TENANT, new GetAddressRequest(JOB)).getBody().getData();
+    var address = adapter.getAddressByJob(new GetAddressRequest(JOB)).getBody().getData();
     assertThat(address.getResponseId()).isEqualTo(SESSION);
     assertThat(address.getAddress().getPermanentAddress()).isEqualTo("Tashkent");
   }
@@ -364,30 +358,28 @@ class MyidAdapterIT {
             .willReturn(aResponse().withStatus(404).withBody("{\"detail\":\"Not found\"}")));
 
     assertProblem(
-        () -> adapter.getResult(TENANT, new GetResultRequest("used")),
-        400,
-        "MYID_ADAPTER_CODE_NOT_VALID");
+        () -> adapter.getResult(new GetResultRequest("used")), 400, "MYID_ADAPTER_CODE_NOT_VALID");
     var blocked =
         assertProblem(
-            () -> adapter.getResult(TENANT, new GetResultRequest("blocked")),
+            () -> adapter.getResult(new GetResultRequest("blocked")),
             429,
             "MYID_ADAPTER_USER_BLOCKED");
     assertThat(blocked.getResponseHeaders().getFirst("Retry-After")).isEqualTo("3600");
     assertThat(blocked.getResponseBodyAsString())
         .contains("{\"code\":\"X-Request-ID\",\"message\":\"r-429\"}");
     assertProblem(
-        () -> adapter.getResult(TENANT, new GetResultRequest("missing-field")),
+        () -> adapter.getResult(new GetResultRequest("missing-field")),
         502,
         "MYID_ADAPTER_MYID_CLIENT_ERROR");
     assertProblem(
-        () -> adapter.getResult(TENANT, new GetResultRequest("down")),
+        () -> adapter.getResult(new GetResultRequest("down")),
         503,
         "MYID_ADAPTER_SERVICE_UNAVAILABLE");
     assertProblem(
-        () -> adapter.getResult(TENANT, new GetResultRequest("slow")),
+        () -> adapter.getResult(new GetResultRequest("slow")),
         503,
         "MYID_ADAPTER_SERVICE_UNAVAILABLE");
-    assertProblem(() -> adapter.getSessionStatus(TENANT, SESSION), 404, "MYID_ADAPTER_NOT_FOUND");
+    assertProblem(() -> adapter.getSessionStatus(SESSION), 404, "MYID_ADAPTER_NOT_FOUND");
   }
 
   @Test
@@ -397,8 +389,7 @@ class MyidAdapterIT {
             .willReturn(
                 aResponse().withStatus(403).withBody("{\"detail\":\"Could not validate\"}")));
 
-    assertProblem(
-        () -> adapter.getSessionStatus(TENANT, SESSION), 502, "MYID_ADAPTER_UNAUTHORIZED");
+    assertProblem(() -> adapter.getSessionStatus(SESSION), 502, "MYID_ADAPTER_UNAUTHORIZED");
     MYID.verify(2, postRequestedFor(urlPathEqualTo("/api/v1/auth/clients/access-token")));
     MYID.verify(2, getRequestedFor(urlPathEqualTo("/api/v1/sdk/sessions/" + SESSION)));
   }
@@ -408,11 +399,7 @@ class MyidAdapterIT {
     assertProblem(
         () ->
             adapter.openFullProofingSession(
-                TENANT, new OpenFullProofingSessionRequest(0.9).passData("AA1234567")),
-        400,
-        "VALIDATION_FAILED");
-    assertProblem(
-        () -> adapter.getResult("tenant-unknown", new GetResultRequest("x")),
+                new OpenFullProofingSessionRequest(0.9).passData("AA1234567")),
         400,
         "VALIDATION_FAILED");
     MYID.verify(0, postRequestedFor(urlPathEqualTo("/api/v2/sdk/sessions")));
@@ -429,12 +416,9 @@ class MyidAdapterIT {
 
     var png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 1, 2, 3};
     var media =
-        adapter
-            .uploadInplaceMedia(TENANT, new UploadInplaceMediaRequest(SESSION, png))
-            .getBody()
-            .getData();
+        adapter.uploadInplaceMedia(new UploadInplaceMediaRequest(SESSION, png)).getBody().getData();
     assertThat(media.getMediaId()).isEqualTo(JOB);
-    assertThat(adapter.getInplaceJobResult(TENANT, JOB).getStatusCode().value()).isEqualTo(202);
+    assertThat(adapter.getInplaceJobResult(JOB).getStatusCode().value()).isEqualTo(202);
   }
 
   @Test
@@ -464,7 +448,7 @@ class MyidAdapterIT {
 
     var data =
         adapter
-            .exchangeAuthorizationCode(TENANT, new ExchangeAuthorizationCodeRequest("qr-code"))
+            .exchangeAuthorizationCode(new ExchangeAuthorizationCodeRequest("qr-code"))
             .getBody()
             .getData();
     assertThat(data.getJobId()).isEqualTo("job-77");
@@ -476,7 +460,6 @@ class MyidAdapterIT {
     var url =
         adapter
             .getAuthorizationUrl(
-                TENANT,
                 new AuthorizationUrlRequest(
                     Set.of(DataScope.COMMON_DATA), AuthenticationMethod.STRONG, "xyz"))
             .getBody()
@@ -488,7 +471,6 @@ class MyidAdapterIT {
     var qr =
         adapter
             .getQrContent(
-                TENANT,
                 new QrContentRequest(AuthenticationMethod.STRONG)
                     .extraInfo(Map.of("branch_id", "tash00991")))
             .getBody()
@@ -498,7 +480,7 @@ class MyidAdapterIT {
   }
 
   @Test
-  void aPhotoComparisonUsesTheTenantsLogin() {
+  void aPhotoComparisonUsesTheAdaptersLogin() {
     MYID.stubFor(
         post("/api/v1/oauth2/access-token")
             .withRequestBody(containing("grant_type=password"))
@@ -517,19 +499,13 @@ class MyidAdapterIT {
     var job =
         adapter
             .createCompareTask(
-                TENANT, new CreateCompareTaskRequest(new byte[] {1, 2, 3}, true, true, false))
+                new CreateCompareTaskRequest(new byte[] {1, 2, 3}, true, true, false))
             .getBody()
             .getData();
     assertThat(job.getJobId()).isEqualTo("job-9");
-    var result =
-        adapter.getCompareResult(TENANT, new CompareResultRequest("job-9")).getBody().getData();
+    var result = adapter.getCompareResult(new CompareResultRequest("job-9")).getBody().getData();
     assertThat(result.getReasonKey()).isEqualTo(ReasonKey.PASSED);
     assertThat(result.getComparisonValue()).isEqualTo(0.81);
-
-    assertProblem(
-        () -> adapter.getCompareResult("tenant-two", new CompareResultRequest("job-9")),
-        502,
-        "MYID_ADAPTER_UNAUTHORIZED");
   }
 
   @Test
@@ -545,15 +521,11 @@ class MyidAdapterIT {
         post(urlPathEqualTo("/api/v1/authentication/compare-photos-status-by-external"))
             .willReturn(aResponse().withStatus(202)));
 
-    assertThat(
-            adapter
-                .getCompareResult(TENANT, new CompareResultRequest("job-9"))
-                .getStatusCode()
-                .value())
+    assertThat(adapter.getCompareResult(new CompareResultRequest("job-9")).getStatusCode().value())
         .isEqualTo(202);
     assertThat(
             adapter
-                .getCompareResultByExternalId(TENANT, new CompareResultByExternalIdRequest("ext-1"))
+                .getCompareResultByExternalId(new CompareResultByExternalIdRequest("ext-1"))
                 .getStatusCode()
                 .value())
         .isEqualTo(202);
@@ -564,13 +536,13 @@ class MyidAdapterIT {
     assertProblem(
         () ->
             adapter.createCompareTask(
-                TENANT, new CreateCompareTaskRequest(new byte[] {1}, true, false, false)),
+                new CreateCompareTaskRequest(new byte[] {1}, true, false, false)),
         400,
         "VALIDATION_FAILED");
     assertProblem(
         () ->
             adapter.createCompareTask(
-                TENANT, new CreateCompareTaskRequest(new byte[] {1}, true, false, true)),
+                new CreateCompareTaskRequest(new byte[] {1}, true, false, true)),
         400,
         "VALIDATION_FAILED");
     MYID.verify(0, postRequestedFor(urlPathEqualTo("/api/v1/authentication/compare-photos-task")));
@@ -584,7 +556,7 @@ class MyidAdapterIT {
       assertProblem(
           () ->
               adapter.getQrContent(
-                  TENANT, new QrContentRequest(AuthenticationMethod.STRONG).extraInfo(extraInfo)),
+                  new QrContentRequest(AuthenticationMethod.STRONG).extraInfo(extraInfo)),
           400,
           "VALIDATION_FAILED");
     }
@@ -595,7 +567,7 @@ class MyidAdapterIT {
     assertProblem(
         () ->
             adapter.getQrContent(
-                TENANT, new QrContentRequest(AuthenticationMethod.STRONG).extraInfo(eleven)),
+                new QrContentRequest(AuthenticationMethod.STRONG).extraInfo(eleven)),
         400,
         "VALIDATION_FAILED");
   }
@@ -616,21 +588,17 @@ class MyidAdapterIT {
             .withHeader("Authorization", equalTo("Bearer person-token"))
             .willReturn(okJson("{\"profile\":{\"common_data\":{\"first_name\":\"ALI\"}}}")));
 
-    var data =
-        adapter
-            .refreshUserData(TENANT, new RefreshUserDataRequest("refresh-1"))
-            .getBody()
-            .getData();
+    var data = adapter.refreshUserData(new RefreshUserDataRequest("refresh-1")).getBody().getData();
     assertThat(data.getRefreshToken()).isEqualTo("refresh-2");
     assertThat(data.getProfile().getCommonData().getFirstName()).isEqualTo("ALI");
 
-    // A 403 from /users/me refuses the person's token, not the tenant's credential.
+    // A 403 from /users/me refuses the person's token, not the adapter's credential.
     MYID.stubFor(
         get("/api/v1/users/me")
             .withHeader("Authorization", equalTo("Bearer person-token"))
             .willReturn(aResponse().withStatus(403).withBody("{\"detail\":\"expired\"}")));
     assertProblem(
-        () -> adapter.refreshUserData(TENANT, new RefreshUserDataRequest("refresh-1")),
+        () -> adapter.refreshUserData(new RefreshUserDataRequest("refresh-1")),
         502,
         "MYID_ADAPTER_MYID_CLIENT_ERROR");
   }
@@ -661,7 +629,7 @@ class MyidAdapterIT {
             .willReturn(
                 okJson("{\"job_id\":\"j-1\",\"bnpl_id\":\"b-1\",\"status\":2,\"result\":false}")));
 
-    var result = adapter.getWebSessionResult(TENANT, SESSION).getBody().getData();
+    var result = adapter.getWebSessionResult(SESSION).getBody().getData();
     WebJob job = result.getJobs().get(0);
     assertThat(job.getImageIssue()).isEqualTo(ImageIssue.FACE_NOT_FULLY_SHOWN);
     assertThat(result.getAuthCode()).isNull();
@@ -669,7 +637,7 @@ class MyidAdapterIT {
     var verification =
         adapter
             .verifyIdentification(
-                TENANT, new VerifyIdentificationRequest("j-1", "bank-1", "b-1", "30101003300128"))
+                new VerifyIdentificationRequest("j-1", "bank-1", "b-1", "30101003300128"))
             .getBody()
             .getData();
     assertThat(verification.getStatus()).isEqualTo(VerificationStatus.EXPIRED);
@@ -682,7 +650,7 @@ class MyidAdapterIT {
         HttpServiceProxyFactory.builderFor(RestClientAdapter.create(Callers.gateway(port)))
             .build()
             .createClient(MyidAdapterClient.class);
-    assertThatThrownBy(() -> stranger.getSessionStatus(TENANT, SESSION))
+    assertThatThrownBy(() -> stranger.getSessionStatus(SESSION))
         .isInstanceOfSatisfying(
             RestClientResponseException.class,
             e -> assertThat(e.getStatusCode().value()).isEqualTo(403));
@@ -690,14 +658,12 @@ class MyidAdapterIT {
 
   @Test
   void aTokenWrittenWithAnotherKeyIsReplaced() {
-    valkey
-        .opsForValue()
-        .set("t:tenant-one:myid-adapter:token:client", "c29tZXRoaW5nIGVsc2UgZW50aXJlbHk=");
+    valkey.opsForValue().set("myid-adapter:token:client", "c29tZXRoaW5nIGVsc2UgZW50aXJlbHk=");
     MYID.stubFor(
         get("/api/v1/sdk/sessions/" + SESSION)
             .willReturn(okJson("{\"status\": \"in_progress\", \"attempts\": []}")));
 
-    adapter.getSessionStatus(TENANT, SESSION);
+    adapter.getSessionStatus(SESSION);
     MYID.verify(1, postRequestedFor(urlPathEqualTo("/api/v1/auth/clients/access-token")));
   }
 

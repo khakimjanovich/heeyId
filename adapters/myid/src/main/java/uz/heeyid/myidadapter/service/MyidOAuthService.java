@@ -36,12 +36,11 @@ public class MyidOAuthService {
   private final MyidOAuthMapper mapper;
   private final MyidProperties properties;
 
-  public AuthorizationUrlResult getAuthorizationUrl(
-      String tenant, AuthorizationUrlRequest request) {
+  public AuthorizationUrlResult getAuthorizationUrl(AuthorizationUrlRequest request) {
     var url =
         UriComponentsBuilder.fromUriString(properties.baseUrl())
             .path("/api/v1/oauth2/authorization")
-            .queryParam("client_id", myid.tenant(tenant).clientId())
+            .queryParam("client_id", myid.credential().clientId())
             .queryParam("response_type", "code")
             .queryParamIfPresent("redirect_uri", Optional.ofNullable(request.getRedirectUri()))
             .queryParam("scope", scope(request.getScope()))
@@ -52,10 +51,10 @@ public class MyidOAuthService {
     return mapper.authorizationUrl(url);
   }
 
-  public QrContentResult getQrContent(String tenant, QrContentRequest request) {
+  public QrContentResult getQrContent(QrContentRequest request) {
     var qr =
         UriComponentsBuilder.newInstance()
-            .queryParam("client_id", myid.tenant(tenant).clientId())
+            .queryParam("client_id", myid.credential().clientId())
             .queryParam("method", request.getMethod().getValue());
     var extraInfo =
         request.getExtraInfo() == null ? Map.<String, String>of() : request.getExtraInfo();
@@ -80,9 +79,8 @@ public class MyidOAuthService {
     return mapper.qrContent(Objects.requireNonNull(qr.encode().build().getQuery()));
   }
 
-  public UserDataResult exchangeAuthorizationCode(
-      String tenant, ExchangeAuthorizationCodeRequest request) {
-    var credential = myid.tenant(tenant);
+  public UserDataResult exchangeAuthorizationCode(ExchangeAuthorizationCodeRequest request) {
+    var credential = myid.credential();
     var token =
         myid.plain(
             true,
@@ -106,8 +104,8 @@ public class MyidOAuthService {
     return userData(token);
   }
 
-  public UserDataResult refreshUserData(String tenant, RefreshUserDataRequest request) {
-    var credential = myid.tenant(tenant);
+  public UserDataResult refreshUserData(RefreshUserDataRequest request) {
+    var credential = myid.credential();
     var token =
         myid.plain(
             true,

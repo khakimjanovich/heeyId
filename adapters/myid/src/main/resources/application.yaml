@@ -12,8 +12,8 @@ spring:
     import:
       - classpath:properties/security.yaml
       - classpath:properties/myid-adapter-exception.yaml
-      # Each tenant's MyID credential (myid.tenants), a file the deployment renders from Vault.
-      - file:${MYID_ADAPTER_TENANTS_FILE}
+      # The adapter's MyID credential (myid.credential), a file the deployment renders from Vault.
+      - file:${MYID_ADAPTER_CREDENTIAL_FILE}
   ssl:
     bundle:
       pem:
@@ -28,8 +28,7 @@ spring:
         myid:
           truststore:
             certificate: ${MYID_TRUSTED_CAS}
-  # Valkey: each tenant's MyID tokens (keys t:<tenant>:myid-adapter:token:*, encrypted), shared by all
-  # instances.
+  # Valkey: the adapter's MyID tokens (keys myid-adapter:token:*, encrypted), shared by all instances.
   data:
     redis:
       host: ${VALKEY_HOST}

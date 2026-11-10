@@ -30,8 +30,7 @@ public class MyidSdkService {
   private final MyidSdkHttpClient sdkHttp;
   private final MyidSdkMapper mapper;
 
-  public OpenSessionResult openFullProofingSession(
-      String tenant, OpenFullProofingSessionRequest request) {
+  public OpenSessionResult openFullProofingSession(OpenFullProofingSessionRequest request) {
     if (request.getPinfl() != null && request.getPassData() != null) {
       throw invalid("pinfl", "give pinfl or passData, not both");
     }
@@ -47,39 +46,37 @@ public class MyidSdkService {
             .isResident(request.getIsResident())
             .phoneNumber(request.getPhoneNumber())
             .build();
-    return openSdkSession(tenant, session);
+    return openSdkSession(session);
   }
 
-  public OpenSessionResult openReCheckSession(String tenant, OpenReCheckSessionRequest request) {
+  public OpenSessionResult openReCheckSession(OpenReCheckSessionRequest request) {
     var session =
         MyidSdkSessionRequest.builder()
             .reuid(request.getReuid().toString())
             .threshold(request.getThreshold())
             .phoneNumber(request.getPhoneNumber())
             .build();
-    return openSdkSession(tenant, session);
+    return openSdkSession(session);
   }
 
-  private OpenSessionResult openSdkSession(String tenant, MyidSdkSessionRequest session) {
-    var answer = myid.withToken(tenant, Grant.CLIENT, auth -> sdkHttp.openSession(auth, session));
+  private OpenSessionResult openSdkSession(MyidSdkSessionRequest session) {
+    var answer = myid.withToken(Grant.CLIENT, auth -> sdkHttp.openSession(auth, session));
     return mapper.session(answer);
   }
 
-  public ProofingResultResult getResult(String tenant, GetResultRequest request) {
-    var answer =
-        myid.withToken(tenant, Grant.CLIENT, true, auth -> sdkHttp.data(auth, request.getCode()));
+  public ProofingResultResult getResult(GetResultRequest request) {
+    var answer = myid.withToken(Grant.CLIENT, true, auth -> sdkHttp.data(auth, request.getCode()));
     return mapper.result(answer);
   }
 
-  public SessionStatusResult getSessionStatus(String tenant, UUID sessionId) {
-    var answer = myid.withToken(tenant, Grant.CLIENT, auth -> sdkHttp.session(auth, sessionId));
+  public SessionStatusResult getSessionStatus(UUID sessionId) {
+    var answer = myid.withToken(Grant.CLIENT, auth -> sdkHttp.session(auth, sessionId));
     return mapper.sessionStatus(answer);
   }
 
-  public AddressResult getAddressByJob(String tenant, GetAddressRequest request) {
+  public AddressResult getAddressByJob(GetAddressRequest request) {
     var answer =
         myid.withToken(
-            tenant,
             Grant.CLIENT,
             auth -> sdkHttp.address(auth, new MyidJobIdRequest(request.getJobId().toString())));
     return mapper.address(answer);

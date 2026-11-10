@@ -18,10 +18,8 @@ public class MyidValidationService {
   private final MyidValidationHttpClient validationHttp;
   private final MyidValidationMapper mapper;
 
-  public VerifyIdentificationResult verifyIdentification(
-      String tenant, VerifyIdentificationRequest request) {
+  public VerifyIdentificationResult verifyIdentification(VerifyIdentificationRequest request) {
     // As the contract says: JSON with no credential, as the BNPL page's example shows.
-    myid.tenant(tenant);
     var answer =
         myid.plain(
             false,

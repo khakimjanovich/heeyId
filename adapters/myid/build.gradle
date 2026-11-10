@@ -15,7 +15,7 @@ dependencies {
     implementation libs.starter.actuator
     implementation libs.platform.observability // logs, traces and metrics, the same in every service
     implementation libs.starter.restclient // the traced RestClient.Builder every client is built from
-    implementation libs.starter.data.redis // Valkey: each tenant's MyID tokens, shared by all instances
+    implementation libs.starter.data.redis // Valkey: the adapter's MyID tokens, shared by all instances
 
     integrationTestImplementation libs.wiremock
     integrationTestImplementation libs.testcontainers.core

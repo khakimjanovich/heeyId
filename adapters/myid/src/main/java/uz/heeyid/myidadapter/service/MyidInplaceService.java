@@ -36,7 +36,7 @@ public class MyidInplaceService {
   private final MyidLongHttpClient longHttp;
   private final MyidInplaceMapper mapper;
 
-  public OpenSessionResult openInplaceSession(String tenant, OpenInplaceSessionRequest request) {
+  public OpenSessionResult openInplaceSession(OpenInplaceSessionRequest request) {
     var documents = (request.getPassData() == null ? 0 : 1) + (request.getPinfl() == null ? 0 : 1);
     var byDocument = documents == 1 && request.getBirthDate() != null && request.getReuid() == null;
     var byReuid = request.getReuid() != null && documents == 0 && request.getBirthDate() == null;
@@ -52,13 +52,11 @@ public class MyidInplaceService {
             .isResident(request.getIsResident())
             .reuid(text(request.getReuid()))
             .build();
-    var answer =
-        myid.withToken(tenant, Grant.CLIENT, auth -> inplaceHttp.openSession(auth, session));
+    var answer = myid.withToken(Grant.CLIENT, auth -> inplaceHttp.openSession(auth, session));
     return mapper.session(answer);
   }
 
-  public InplaceMediaResult uploadInplaceMedia(String tenant, UploadInplaceMediaRequest request) {
-    myid.tenant(tenant);
+  public InplaceMediaResult uploadInplaceMedia(UploadInplaceMediaRequest request) {
     var answer =
         myid.plain(
             false,
@@ -72,10 +70,9 @@ public class MyidInplaceService {
     return mapper.media(answer);
   }
 
-  public JobResult createInplaceJob(String tenant, CreateInplaceJobRequest request) {
+  public JobResult createInplaceJob(CreateInplaceJobRequest request) {
     var answer =
         myid.withToken(
-            tenant,
             Grant.CLIENT,
             auth ->
                 inplaceHttp.createJob(
@@ -86,8 +83,8 @@ public class MyidInplaceService {
   }
 
   /** Empty while MyID still processes the job (its 202). */
-  public Optional<InplaceJobResultResult> getInplaceJobResult(String tenant, UUID jobId) {
-    var answer = myid.withToken(tenant, Grant.CLIENT, auth -> longHttp.inplaceJob(auth, jobId));
+  public Optional<InplaceJobResultResult> getInplaceJobResult(UUID jobId) {
+    var answer = myid.withToken(Grant.CLIENT, auth -> longHttp.inplaceJob(auth, jobId));
     return mapper.jobResult(answer);
   }
 
