@@ -6,7 +6,6 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import java.time.Duration;
-import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -43,12 +42,12 @@ public record MyidProperties(
   public record Breaker(@Positive int failures, @NotNull Duration probeAfter) {}
 
   /**
-   * The adapter's MyID credential. The login is for the Backend API without personal data (the
-   * password grant); an installation without that MyID contract leaves it out.
+   * The adapter's MyID credential: the client (Mobile SDK, Inplace, WebSDK, Redirect, QR) and the
+   * login of the Backend API without personal data (the password grant). Every part is required.
    */
   public record Credential(
       @NotBlank String clientId,
       @NotBlank String clientSecret,
-      @Nullable String username,
-      @Nullable String password) {}
+      @NotBlank String username,
+      @NotBlank String password) {}
 }

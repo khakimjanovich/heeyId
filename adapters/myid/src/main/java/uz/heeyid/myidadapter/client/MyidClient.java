@@ -6,16 +6,16 @@ import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADA
 import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADAPTER_SERVICE_UNAVAILABLE;
 import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADAPTER_UNAUTHORIZED;
 import static uz.heeyid.myidadapter.constant.MyidAdapterExceptionStatus.MYID_ADAPTER_USER_BLOCKED;
+import static uz.heeyid.myidadapter.utils.ConstantUtils.GRANT_CLIENT_CREDENTIALS;
+import static uz.heeyid.myidadapter.utils.ConstantUtils.GRANT_PASSWORD;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.ResourceAccessException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -84,10 +84,14 @@ public class MyidClient {
   /** As {@link #withToken(Grant, Function)}; exchange true for a code exchange. */
   public Answer withToken(
       Grant grant, boolean exchange, Function<String, ResponseEntity<byte[]>> call) {
-    var answer = send(() -> call.apply(bearer(token(grant))));
+    // The token first, outside the call's breaker step: getting it is a MyID call of its own
+    // (counted once, in issue), and a refused credential or a Valkey error is no MyID outage.
+    var auth = bearer(token(grant));
+    var answer = send(() -> call.apply(auth));
     if (answer.status() == 403) {
       tokens.forget(grant);
-      answer = send(() -> call.apply(bearer(token(grant))));
+      var renewed = bearer(token(grant));
+      answer = send(() -> call.apply(renewed));
     }
     return checked(answer, exchange);
   }
@@ -132,24 +136,17 @@ public class MyidClient {
                               credential.clientId(), credential.clientSecret()));
               case CLIENT_CREDENTIALS ->
                   () ->
-                      tokenHttp.oauthToken(
-                          form(
-                              "grant_type", "client_credentials",
-                              "client_id", credential.clientId(),
-                              "client_secret", credential.clientSecret()));
-              case PASSWORD -> {
-                if (credential.username() == null || credential.password() == null) {
-                  throw new GeneralException(MYID_ADAPTER_UNAUTHORIZED)
-                      .subError("credential", "the adapter has no MyID login for this flow");
-                }
-                yield () ->
-                    tokenHttp.oauthToken(
-                        form(
-                            "grant_type", "password",
-                            "username", credential.username(),
-                            "password", credential.password(),
-                            "client_id", credential.clientId()));
-              }
+                      tokenHttp.clientCredentialsToken(
+                          GRANT_CLIENT_CREDENTIALS,
+                          credential.clientId(),
+                          credential.clientSecret());
+              case PASSWORD ->
+                  () ->
+                      tokenHttp.passwordToken(
+                          GRANT_PASSWORD,
+                          credential.username(),
+                          credential.password(),
+                          credential.clientId());
             });
     if (answer.status() >= 500 || answer.status() == 429 || answer.status() == 422) {
       checked(answer, false);
@@ -241,16 +238,5 @@ public class MyidClient {
       return null;
     }
     return detail.isString() ? detail.asString() : detail.toString();
-  }
-
-  /** A form body from name, value pairs; a null value is left out. */
-  public static LinkedMultiValueMap<String, String> form(@Nullable String... pairs) {
-    var form = new LinkedMultiValueMap<String, String>();
-    for (var i = 0; i < pairs.length; i += 2) {
-      if (pairs[i + 1] != null) {
-        form.add(Objects.requireNonNull(pairs[i]), pairs[i + 1]);
-      }
-    }
-    return form;
   }
 }

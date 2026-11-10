@@ -17,12 +17,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
 import java.time.LocalDate;
 import java.util.Base64;
 import java.util.HashMap;
@@ -138,23 +136,6 @@ class MyidAdapterIT {
     MYID.start();
     FALSE_MYID.start();
     VALKEY.start();
-    // Spring imports the credential file before dynamic properties exist: a system property it is.
-    try {
-      var credential =
-          Files.writeString(
-              Callers.directory().resolve("credential.yaml"),
-              """
-              myid:
-                credential:
-                  client-id: client-one
-                  client-secret: secret-one
-                  username: login-one
-                  password: password-one
-              """);
-      System.setProperty("MYID_ADAPTER_CREDENTIAL_FILE", credential.toString());
-    } catch (IOException e) {
-      throw new IllegalStateException(e);
-    }
   }
 
   @DynamicPropertySource
@@ -164,6 +145,10 @@ class MyidAdapterIT {
     registry.add("MYID_MEDIA_URL", () -> myidUrl() + "/media");
     registry.add("MYID_TRUSTED_CAS", () -> "file:" + MYID_CA.certificate());
     registry.add("MYID_ADAPTER_TOKEN_KEY", () -> TOKEN_KEY);
+    registry.add("MYID_CLIENT_ID", () -> "client-one");
+    registry.add("MYID_CLIENT_SECRET", () -> "secret-one");
+    registry.add("MYID_USERNAME", () -> "login-one");
+    registry.add("MYID_PASSWORD", () -> "password-one");
     registry.add("MYID_CONNECT_TIMEOUT", () -> "1s");
     registry.add("MYID_READ_TIMEOUT", () -> "1s");
     registry.add("MYID_LONG_READ_TIMEOUT", () -> "3s");
@@ -392,6 +377,45 @@ class MyidAdapterIT {
     assertProblem(() -> adapter.getSessionStatus(SESSION), 502, "MYID_ADAPTER_UNAUTHORIZED");
     MYID.verify(2, postRequestedFor(urlPathEqualTo("/api/v1/auth/clients/access-token")));
     MYID.verify(2, getRequestedFor(urlPathEqualTo("/api/v1/sdk/sessions/" + SESSION)));
+  }
+
+  @Test
+  void aRefusedCredentialIsNoOutageForTheBreaker() {
+    MYID.stubFor(
+        post("/api/v1/auth/clients/access-token")
+            .willReturn(aResponse().withStatus(403).withBody("{\"detail\":\"bad client\"}")));
+    for (var i = 0; i < 6; i++) {
+      assertProblem(() -> adapter.getSessionStatus(SESSION), 502, "MYID_ADAPTER_UNAUTHORIZED");
+    }
+    MYID.stubFor(
+        post("/api/v1/auth/clients/access-token")
+            .willReturn(okJson("{\"access_token\":\"sdk-token\",\"expires_in\":3600}")));
+    MYID.stubFor(
+        get("/api/v1/sdk/sessions/" + SESSION)
+            .willReturn(okJson("{\"status\": \"in_progress\", \"attempts\": []}")));
+
+    // Six refusals in a row, and the breaker (5 failures) is still closed: MyID is reached.
+    adapter.getSessionStatus(SESSION);
+    MYID.verify(1, getRequestedFor(urlPathEqualTo("/api/v1/sdk/sessions/" + SESSION)));
+  }
+
+  @Test
+  void aTokenCallThatFailsCountsOnceForTheBreaker() {
+    MYID.stubFor(post("/api/v1/auth/clients/access-token").willReturn(aResponse().withStatus(503)));
+    for (var i = 0; i < 4; i++) {
+      assertProblem(
+          () -> adapter.getSessionStatus(SESSION), 503, "MYID_ADAPTER_SERVICE_UNAVAILABLE");
+    }
+    MYID.stubFor(
+        post("/api/v1/auth/clients/access-token")
+            .willReturn(okJson("{\"access_token\":\"sdk-token\",\"expires_in\":3600}")));
+    MYID.stubFor(
+        get("/api/v1/sdk/sessions/" + SESSION)
+            .willReturn(okJson("{\"status\": \"in_progress\", \"attempts\": []}")));
+
+    // Four failures, not eight: the breaker (5) is still closed.
+    adapter.getSessionStatus(SESSION);
+    MYID.verify(1, getRequestedFor(urlPathEqualTo("/api/v1/sdk/sessions/" + SESSION)));
   }
 
   @Test

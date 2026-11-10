@@ -48,7 +48,7 @@ class MyidBreakerTest {
               Duration.ofSeconds(30),
               new MyidProperties.Breaker(5, Duration.ofSeconds(30)),
               "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
-              new MyidProperties.Credential("client", "secret", null, null)),
+              new MyidProperties.Credential("client", "secret", "login", "password")),
           clock,
           registry);
 

@@ -44,7 +44,7 @@ No value has a default: a missing one stops startup.
 | `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_USERNAME`, `VALKEY_PASSWORD` | Valkey and the adapter's ACL user |
 | `MYID_ADAPTER_TOKEN_KEY` | AES-256 key, 32 bytes in base64: the MyID tokens in Valkey are encrypted with it (SAD TB-5) |
 | `MYID_TRUSTED_CAS` | MyID's CA (PEM, or `file:` path): MyID is trusted only through it (SAD TB-5, pinned CA) |
-| `MYID_ADAPTER_CREDENTIAL_FILE` | a YAML file the deployment renders from Vault: `myid.credential.client-id`, `client-secret`, and `username`, `password` for the Backend API without personal data (one credential per installation, SAD v3.2 C-1) |
+| `MYID_CLIENT_ID`, `MYID_CLIENT_SECRET`, `MYID_USERNAME`, `MYID_PASSWORD` | the adapter's MyID credential, one per installation (SAD v3.2 C-1): the client, and the login of the Backend API without personal data (the password grant); all required |
 | `MYID_ADAPTER_PORT`, `MYID_ADAPTER_MANAGEMENT_PORT` | the API port (mutual TLS) and the health port |
 | `MYID_ADAPTER_SSL_CERTIFICATE`, `MYID_ADAPTER_SSL_PRIVATE_KEY`, `MYID_ADAPTER_SSL_TRUSTED_CAS` | the adapter's certificate and the CAs of its callers |
 | `MYID_ADAPTER_ISSUER_URI`, `MYID_ADAPTER_AUDIENCE` | heeyID's Keycloak and the adapter's audience; callers need the realm role `myid.use` |
