@@ -25,6 +25,12 @@ public class ConstantUtils {
   /** SAD TB-5: a token is in Valkey only encrypted with AES-256-GCM. */
   public static final String TOKEN_CIPHER = "AES/GCM/NoPadding";
 
+  /** MyID's OAuth grant types (/api/v1/oauth2/access-token, grant_type). */
+  public static final String GRANT_CLIENT_CREDENTIALS = "client_credentials";
+
+  public static final String GRANT_PASSWORD = "password";
+  public static final String GRANT_AUTHORIZATION_CODE = "authorization_code";
+
   public static final int TOKEN_IV_BYTES = 12;
   public static final int TOKEN_TAG_BITS = 128;
 }

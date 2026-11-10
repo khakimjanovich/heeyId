@@ -1,6 +1,6 @@
 package uz.heeyid.myidadapter.service;
 
-import static uz.heeyid.myidadapter.client.MyidClient.form;
+import static uz.heeyid.myidadapter.utils.ConstantUtils.GRANT_AUTHORIZATION_CODE;
 import static uz.heeyid.myidadapter.utils.ConstantUtils.QR_EXTRA_KEY;
 import static uz.heeyid.myidadapter.utils.ConstantUtils.QR_EXTRA_VALUE;
 import static uz.heeyid.myidadapter.utils.MyidRequestUtils.invalid;
@@ -85,22 +85,15 @@ public class MyidOAuthService {
         myid.plain(
             true,
             () ->
-                tokenHttp.oauthToken(
-                    form(
-                        "grant_type",
-                        "authorization_code",
-                        "code",
-                        request.getCode(),
-                        "client_id",
-                        credential.clientId(),
-                        "client_secret",
-                        credential.clientSecret(),
-                        "method",
-                        request.getMethod() == null ? null : request.getMethod().getValue(),
-                        "scope",
-                        request.getScope() == null || request.getScope().isEmpty()
-                            ? null
-                            : scope(request.getScope()))));
+                tokenHttp.authorizationCodeToken(
+                    GRANT_AUTHORIZATION_CODE,
+                    request.getCode(),
+                    credential.clientId(),
+                    credential.clientSecret(),
+                    request.getMethod() == null ? null : request.getMethod().getValue(),
+                    request.getScope() == null || request.getScope().isEmpty()
+                        ? null
+                        : scope(request.getScope())));
     return userData(token);
   }
 
