@@ -47,7 +47,7 @@ myid:
   connect-timeout: ${MYID_CONNECT_TIMEOUT}
   read-timeout: ${MYID_READ_TIMEOUT}
   long-read-timeout: ${MYID_LONG_READ_TIMEOUT}
-  # The adapter's MyID credential, one per installation (SAD v3.2 C-1): the client, and the login of
+  # The adapter's MyID credential, one per installation (SAD C-13): the client, and the login of
   # the Backend API without personal data (the password grant).
   credential:
     client-id: ${MYID_CLIENT_ID}
