@@ -1,0 +1,26 @@
+# Errors the push adapter returns (push-adapter-api): HTTP status, title and message in English,
+# Russian and Uzbek. FCM's error code travels in subErrors.
+platform:
+  error:
+    codes:
+      PUSH_ADAPTER_TOKEN_NOT_VALID:
+        http-code: 422
+        title: push-token-not-valid
+        is-loggable: false
+        message-en: "The device token is not valid. Remove it; the app sends a new one."
+        message-ru: "Токен устройства недействителен. Удалите его; приложение пришлёт новый."
+        message-uz: "Qurilma tokeni yaroqsiz. Uni oʻchiring; ilova yangisini yuboradi."
+      PUSH_ADAPTER_RATE_LIMITED:
+        http-code: 429
+        title: push-rate-limited
+        is-loggable: true
+        message-en: "FCM limits the sends now. Try again after Retry-After."
+        message-ru: "FCM сейчас ограничивает отправку. Повторите после Retry-After."
+        message-uz: "FCM hozir yuborishni cheklayapti. Retry-After dan keyin qayta urining."
+      PUSH_ADAPTER_SERVICE_UNAVAILABLE:
+        http-code: 503
+        title: push-service-unavailable
+        is-loggable: true
+        message-en: "FCM is not available now."
+        message-ru: "FCM сейчас недоступен."
+        message-uz: "FCM hozir ishlamayapti."

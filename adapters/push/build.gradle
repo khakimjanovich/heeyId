@@ -1,0 +1,23 @@
+// The push adapter: a service that sends push messages through Firebase Cloud Messaging (FCM HTTP
+// v1, with Google's Firebase Admin SDK for Java) and offers it as the contracts repository's
+// push-adapter-api. heeyID's workers call it through push-adapter-client.
+plugins {
+    alias libs.plugins.spring.boot
+    id 'platform.java'
+    id 'platform.integration-test'
+}
+
+dependencies {
+    implementation contracts.push.adapter.api
+    implementation libs.platform.error
+    implementation libs.platform.security // callers: a trusted issuer, the audience and the role
+    implementation libs.starter.webmvc
+    implementation libs.starter.validation
+    implementation libs.starter.actuator
+    implementation libs.platform.observability // logs, traces and metrics, the same in every service
+    // Google's SDK as it ships: its FCM client needs Jackson 2's JSON factory, which only its
+    // Firestore and Storage modules bring, so nothing is excluded.
+    implementation contracts.firebase.admin
+
+    integrationTestImplementation libs.wiremock
+}

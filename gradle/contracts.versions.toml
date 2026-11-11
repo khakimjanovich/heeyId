@@ -1,7 +1,9 @@
 # The API contracts, published by github.com/khakimjanovich/contracts (read as `contracts`).
 # One version for all of them; moving to a newer release is this one line.
 [versions]
-contracts = "1.6.0"
+contracts = "1.7.0"
+# Not a contract: Google's Firebase Admin SDK for Java (FCM HTTP v1), for adapters/push only.
+firebase-admin = "9.11.0"
 
 [libraries]
 myid-adapter-api = { module = "uz.khakimjanovich.contracts:myid-adapter-api", version.ref = "contracts" }
@@ -13,3 +15,7 @@ sms-adapter-client = { module = "uz.khakimjanovich.contracts:sms-adapter-client"
 taf-adapter-api = { module = "uz.khakimjanovich.contracts:taf-adapter-api", version.ref = "contracts" }
 # The adapter's ready-made client: its client interfaces as the group taf-adapter.
 taf-adapter-client = { module = "uz.khakimjanovich.contracts:taf-adapter-client", version.ref = "contracts" }
+push-adapter-api = { module = "uz.khakimjanovich.contracts:push-adapter-api", version.ref = "contracts" }
+# The adapter's ready-made client: its client interface as the group push-adapter.
+push-adapter-client = { module = "uz.khakimjanovich.contracts:push-adapter-client", version.ref = "contracts" }
+firebase-admin = { module = "com.google.firebase:firebase-admin", version.ref = "firebase-admin" }
