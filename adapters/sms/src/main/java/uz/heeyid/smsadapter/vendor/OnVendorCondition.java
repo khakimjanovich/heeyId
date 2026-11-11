@@ -1,13 +1,14 @@
 package uz.heeyid.smsadapter.vendor;
 
 import java.util.List;
-import org.springframework.boot.context.properties.bind.Bindable;
-import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.annotation.Condition;
 import org.springframework.context.annotation.ConditionContext;
 import org.springframework.core.type.AnnotatedTypeMetadata;
 
-/** True when the vendor of {@link ConditionalOnVendor} is active or in the failover list. */
+/**
+ * True when the vendor of {@link ConditionalOnVendor} is active or in the failover list. The two
+ * settings have no default: a missing one stops startup.
+ */
 class OnVendorCondition implements Condition {
 
   @Override
@@ -17,9 +18,10 @@ class OnVendorCondition implements Condition {
       return false;
     }
     var name = String.valueOf(attributes.get("value"));
-    var binder = Binder.get(context.getEnvironment());
-    var active = binder.bind("sms.active-vendor", String.class).orElse("");
-    var failover = binder.bind("sms.failover", Bindable.listOf(String.class)).orElse(List.of());
-    return name.equals(active) || failover.contains(name);
+    // Required, and strict about ${SMS_ACTIVE_VENDOR}: a missing value stops startup naming it.
+    var environment = context.getEnvironment();
+    var active = environment.getRequiredProperty("sms.active-vendor");
+    var failover = environment.getRequiredProperty("sms.failover", String[].class);
+    return name.equals(active) || List.of(failover).contains(name);
   }
 }
