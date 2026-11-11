@@ -11,7 +11,7 @@ import org.springframework.validation.annotation.Validated;
 
 /**
  * Where MyID is, how long we wait, and the adapter's MyID credential (one per installation, SAD
- * v3.2 C-1). No default: a missing value stops startup.
+ * C-13). No default: a missing value stops startup.
  *
  * @param baseUrl MyID's host ({myid_host})
  * @param mediaUrl MyID's media host, for the Inplace photo ({myid_media_host})
