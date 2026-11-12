@@ -1,4 +1,4 @@
-# Format check, unit and integration tests: each adapter in its own job.
+# Format check, unit and integration tests: each adapter in its own job, the gateway build in one.
 # The platform and the contracts come published (GitHub Packages, packages: read). Pushes to main and every pull request.
 # The contracts come published from khakimjanovich/contracts, which lints and checks them.
 name: build
@@ -51,3 +51,31 @@ jobs:
           path: |
             adapters/${{ matrix.adapter }}/build/reports/tests/
             adapters/${{ matrix.adapter }}/build/test-results/
+
+  gateway:
+    name: gateway
+    runs-on: self-hosted # the owner's runner for this repository (GitHub's hosted runners are unavailable)
+    steps:
+      - uses: actions/checkout@v7
+      - name: The packages token is there
+        env:
+          PACKAGES_READ_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }}
+        run: |
+          [ -n "$PACKAGES_READ_TOKEN" ] || { echo "::error::Secret PACKAGES_READ_TOKEN is missing: a classic token with read:packages, the owner's"; exit 1; }
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+      - uses: gradle/actions/setup-gradle@v6
+      - run: ./gradlew -p gateway check
+        env:
+          GH_PACKAGES_ACTOR: ${{ github.repository_owner }}
+          GH_PACKAGES_TOKEN: ${{ secrets.PACKAGES_READ_TOKEN }} # the private platform and contracts packages
+      - name: Keep the test reports of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports-gateway
+          path: |
+            gateway/*/build/reports/tests/
+            gateway/*/build/test-results/

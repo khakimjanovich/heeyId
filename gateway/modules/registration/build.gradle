@@ -1,0 +1,7 @@
+// The registration module: a person's registration (SAD §10.1). Its outgoing SMS go through the
+// SMS adapter's ready-made client.
+dependencies {
+    implementation project(':modules:notification')
+    implementation contracts.sms.adapter.client
+    implementation libs.starter.restclient // the RestClient the SMS adapter's client is built on
+}
