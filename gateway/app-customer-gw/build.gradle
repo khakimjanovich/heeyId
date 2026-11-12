@@ -1,0 +1,12 @@
+// The customer gateway (SAD §10.1): one deployable built from the modules.
+plugins {
+    alias libs.plugins.spring.boot
+}
+
+dependencies {
+    implementation project(':modules:registration')
+    implementation project(':modules:notification')
+    implementation libs.spring.boot.autoconfigure
+
+    testImplementation libs.modulith.core // ModularityTest
+}

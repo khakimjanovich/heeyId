@@ -1,0 +1,11 @@
+// The gateway build (SAD §10.1): every module and app shares one setup, the platform's
+// platform.module plugin (Java, the Spring and Modulith BOMs, one code format, the architecture and
+// null checks, unit and integration tests, all run by `check`).
+plugins {
+    id 'base'
+    alias libs.plugins.spring.boot apply false
+    id 'platform.module' apply false
+}
+
+// `modules` itself is only a folder; every project with a build file is a module or an app.
+configure(subprojects.findAll { it.buildFile.exists() }) { apply plugin: 'platform.module' }
